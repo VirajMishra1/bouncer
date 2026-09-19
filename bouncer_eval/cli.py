@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import os
 import sys
 import time
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 
+from .bouncer import BouncerEvaluator
 from .dataset import load_cases, validate_cases
 from .deterministic import DeterministicEvaluator
 from .metrics import classify_gate, summarize
@@ -23,6 +25,14 @@ MODELS = {
     "lightning": "nvidia/nemotron-3.5-lightning-30b-a3b",
     "super": "nvidia/nemotron-3-super-120b-a12b",
 }
+SYSTEMS = (
+    "deterministic",
+    "lightning",
+    "lightning-thinking",
+    "super",
+    "super-thinking",
+    "bouncer",
+)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -33,7 +43,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--systems",
         nargs="+",
-        choices=("deterministic", "lightning", "super"),
+        choices=SYSTEMS,
         default=["deterministic", "lightning", "super"],
     )
     parser.add_argument("--dry-run", action="store_true", help="Validate data and run rules without API calls.")
@@ -44,10 +54,11 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: Sequence[str] | None = None, *, environ: Mapping[str, str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     env = os.environ if environ is None else environ
+    dataset_hash = hashlib.sha256(args.dataset.read_bytes()).hexdigest()
     cases = load_cases(args.dataset)
     validate_cases(cases)
     systems = ["deterministic"] if args.dry_run else list(dict.fromkeys(args.systems))
-    needs_api = any(system in MODELS for system in systems)
+    needs_api = any(system != "deterministic" for system in systems)
     api_key = env.get("NVIDIA_API_KEY", "")
     if needs_api and not api_key:
         print("NVIDIA_API_KEY is required for Lightning or Super.", file=sys.stderr)
@@ -59,8 +70,17 @@ def main(argv: Sequence[str] | None = None, *, environ: Mapping[str, str] | None
             evaluator = DeterministicEvaluator()
             output_name = "deterministic"
             interval = 0.0
+        elif system == "bouncer":
+            evaluator = BouncerEvaluator(NemotronEvaluator(MODELS["super"], api_key))
+            output_name = "bouncer-super"
+            interval = max(0.0, args.min_interval)
         else:
-            evaluator = NemotronEvaluator(MODELS[system], api_key)
+            model_name = system.removesuffix("-thinking")
+            evaluator = NemotronEvaluator(
+                MODELS[model_name],
+                api_key,
+                reasoning=system.endswith("-thinking"),
+            )
             output_name = f"nemotron-{system}"
             interval = max(0.0, args.min_interval)
         print(f"Running {output_name} on {len(cases)} cases...")
@@ -72,7 +92,15 @@ def main(argv: Sequence[str] | None = None, *, environ: Mapping[str, str] | None
         if args.dry_run
         else classify_gate(summaries)
     )
-    write_reports(cases, all_decisions, summaries, gate, args.json_output, args.markdown_output)
+    write_reports(
+        cases,
+        all_decisions,
+        summaries,
+        gate,
+        args.json_output,
+        args.markdown_output,
+        dataset_hash=dataset_hash,
+    )
     print(f"Decision: {gate['decision']}")
     print(f"Reports: {args.json_output} and {args.markdown_output}")
     return 0
