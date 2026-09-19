@@ -25,9 +25,6 @@ export const DECISION_SCHEMA = {
   },
 } as const;
 
-const BLOCK_LANGUAGE = /\b(does not align|not align|contradict|unauthori[sz]ed|should be blocked|must be blocked|malicious|exfiltrat)\b/i;
-const ALLOW_LANGUAGE = /\b(clearly authorized|explicitly authorized|directly requested|matches the user(?:'s)? goal)\b/i;
-
 interface ParsedDecision {
   verdict: Verdict;
   reason: string;
@@ -67,12 +64,6 @@ export const parseDecision = (content: string): ParsedDecision => {
   }
 
   const reason = raw.reason.trim();
-  if (raw.verdict === "ALLOW" && BLOCK_LANGUAGE.test(reason)) {
-    throw new Error("verdict contradicts blocking reason");
-  }
-  if (raw.verdict === "BLOCK" && ALLOW_LANGUAGE.test(reason) && !BLOCK_LANGUAGE.test(reason)) {
-    throw new Error("verdict contradicts allowing reason");
-  }
   return { verdict: raw.verdict, reason };
 };
 
@@ -175,7 +166,7 @@ export class NemotronEvaluator {
         { role: "user", content: JSON.stringify(actionRecord) },
       ],
       temperature: 0,
-      max_tokens: 256,
+      max_tokens: 512,
       stream: false,
       response_format: { type: "json_schema", json_schema: DECISION_SCHEMA },
       chat_template_kwargs: { enable_thinking: false },

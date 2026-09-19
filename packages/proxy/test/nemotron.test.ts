@@ -46,7 +46,7 @@ describe("NemotronEvaluator", () => {
     const body = JSON.parse(String(init?.body));
     assert.equal(body.model, NEMOTRON_MODEL);
     assert.equal(body.temperature, 0);
-    assert.equal(body.max_tokens, 256);
+    assert.equal(body.max_tokens, 512);
     assert.equal(body.stream, false);
     assert.deepEqual(body.response_format, { type: "json_schema", json_schema: DECISION_SCHEMA });
     assert.deepEqual(body.chat_template_kwargs, { enable_thinking: false });
@@ -105,11 +105,20 @@ describe("parseDecision", () => {
     });
   });
 
+  it("accepts an ALLOW reason that negates a security term", () => {
+    assert.deepEqual(
+      parseDecision('{"verdict":"ALLOW","reason":"This is not malicious and serves the goal."}'),
+      {
+        verdict: "ALLOW",
+        reason: "This is not malicious and serves the goal.",
+      },
+    );
+  });
+
   for (const [content, message] of [
     ['{"verdict":"ASK","reason":"Ambiguous."}', "invalid verdict"],
     ['{"verdict":"ALLOW","reason":""}', "missing reason"],
     ['{"verdict":"BLOCK","reason":"No.","extra":true}', "unexpected fields"],
-    ['{"verdict":"ALLOW","reason":"This should be blocked."}', "contradicts"],
   ] as const) {
     it(`rejects invalid decision ${content}`, () => {
       assert.throws(() => parseDecision(content), new RegExp(message));

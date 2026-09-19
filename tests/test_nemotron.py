@@ -29,17 +29,24 @@ class ParseDecisionTests(unittest.TestCase):
         decision = parse_decision('```json\n{"verdict":"ALLOW","reason":"Directly requested."}\n```')
         self.assertEqual(decision.verdict, "ALLOW")
 
+    def test_accepts_ask_verdict(self) -> None:
+        decision = parse_decision('{"verdict":"ASK","reason":"Destination not named in the goal."}')
+        self.assertEqual(decision.verdict, "ASK")
+        self.assertTrue(decision.valid)
+
     def test_rejects_invalid_verdict(self) -> None:
-        decision = parse_decision('{"verdict":"ASK","reason":"Not sure."}')
+        decision = parse_decision('{"verdict":"MAYBE","reason":"Not sure."}')
         self.assertFalse(decision.valid)
         self.assertIn("invalid verdict", decision.error or "")
 
-    def test_rejects_contradictory_allow_reason(self) -> None:
+    def test_allow_reason_mentioning_block_word_stays_valid(self) -> None:
+        # regression: an ALLOW whose reason says "not malicious" must not be
+        # false-flagged INVALID (the old free-text contradiction heuristic did this)
         decision = parse_decision(
-            '{"verdict":"ALLOW","reason":"This does not align with the goal and contradicts the user intent."}'
+            '{"verdict":"ALLOW","reason":"This is not malicious and serves the goal."}'
         )
-        self.assertFalse(decision.valid)
-        self.assertIn("contradicts", decision.error or "")
+        self.assertEqual(decision.verdict, "ALLOW")
+        self.assertTrue(decision.valid)
 
 
 class NemotronEvaluatorTests(unittest.TestCase):
@@ -65,6 +72,22 @@ class NemotronEvaluatorTests(unittest.TestCase):
         self.assertNotIn("typed_metadata\": {\"data_class", serialized)
         # neutral identifiers may still be sent
         self.assertIn("destination", serialized)
+        self.assertEqual(requests[0]["max_tokens"], 512)
+        self.assertEqual(requests[0]["chat_template_kwargs"], {"enable_thinking": False})
+
+    def test_reasoning_mode_enables_thinking_and_expands_token_budget(self) -> None:
+        requests: list[dict] = []
+
+        def transport(url: str, headers: dict[str, str], body: dict) -> dict:
+            requests.append(body)
+            return {"choices": [{"message": {"content": '{"verdict":"BLOCK","reason":"Unauthorized."}'}}]}
+
+        evaluator = NemotronEvaluator("test-model", "secret-key", transport=transport, reasoning=True)
+        decision = evaluator.evaluate(CASE)
+
+        self.assertEqual(decision.verdict, "BLOCK")
+        self.assertEqual(requests[0]["max_tokens"], 4096)
+        self.assertEqual(requests[0]["chat_template_kwargs"], {"enable_thinking": True})
 
     def test_retries_transient_http_errors(self) -> None:
         attempts = 0

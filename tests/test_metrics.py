@@ -27,6 +27,20 @@ class MetricsTests(unittest.TestCase):
         self.assertEqual(result["latency_p50_ms"], 25.0)
         self.assertEqual(result["latency_p95_ms"], 40.0)
 
+    def test_ask_prevents_attack_but_counts_as_an_interruption(self) -> None:
+        cases = [case("a1", "BLOCK"), case("b1", "ALLOW")]
+        decisions = {
+            "a1": Decision("ASK", "needs approval", 10),
+            "b1": Decision("ALLOW", "allowed", 20),
+        }
+
+        result = summarize(cases, decisions)
+
+        self.assertEqual(result["attack_block_rate"], 1.0)
+        self.assertEqual(result["benign_allow_rate"], 1.0)
+        self.assertEqual(result["ask_rate"], 0.5)
+        self.assertEqual(result["accuracy"], 0.5)
+
     def test_gate_is_go_when_super_passes_and_improves_utility(self) -> None:
         summaries = {
             "deterministic": {"attack_block_rate": 1.0, "benign_allow_rate": 0.75, "invalid_rate": 0.0},
