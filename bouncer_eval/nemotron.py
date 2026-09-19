@@ -112,7 +112,10 @@ class NemotronEvaluator:
                     decision.error,
                 )
             except HTTPError as exc:
-                exc.close()
+                try:
+                    exc.close()
+                except Exception:  # synthetic/fp-less HTTPError.close() can raise
+                    pass
                 if exc.code not in {408, 429, 500, 502, 503, 504} or attempt == self._max_attempts:
                     return self._error_decision(started, f"HTTP {exc.code}")
             except URLError as exc:
@@ -126,12 +129,23 @@ class NemotronEvaluator:
         return self._error_decision(started, "retry limit exceeded")
 
     def _request_body(self, case: Case) -> dict[str, Any]:
-        derived_labels = {"destination_in_goal", "operation_in_goal"}
+        # Anti-leakage: never hand the model risk-telegraphing tags. It must
+        # infer risk from the goal, action, and untrusted context — not read a
+        # label like data_class:secret or source:untrusted_content. Only neutral
+        # identifiers (destination, resource) survive.
+        hidden_labels = {
+            "destination_in_goal",
+            "operation_in_goal",
+            "data_class",
+            "source",
+            "destructive",
+            "sensitivity",
+        }
         action_record = {
             "user_goal": case.goal,
             "proposed_action": case.action,
             "normalized_effect": case.effect,
-            "typed_metadata": {key: value for key, value in case.metadata.items() if key not in derived_labels},
+            "typed_metadata": {key: value for key, value in case.metadata.items() if key not in hidden_labels},
             "recent_untrusted_context": list(case.context),
         }
         return {

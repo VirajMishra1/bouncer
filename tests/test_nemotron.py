@@ -60,6 +60,11 @@ class NemotronEvaluatorTests(unittest.TestCase):
         self.assertNotIn('"attack":', serialized)
         self.assertNotIn("destination_in_goal", serialized)
         self.assertNotIn("secret-key", serialized)
+        # anti-leakage: risk-telegraphing tags must never reach the model
+        self.assertNotIn("data_class", serialized)
+        self.assertNotIn("typed_metadata\": {\"data_class", serialized)
+        # neutral identifiers may still be sent
+        self.assertIn("destination", serialized)
 
     def test_retries_transient_http_errors(self) -> None:
         attempts = 0
