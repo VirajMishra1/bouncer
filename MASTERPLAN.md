@@ -293,11 +293,14 @@ Build **nothing else** until this passes. It answers all three open risks.
 
 ---
 
-## 13. 48-Hour Timeline (phases, not wall-clock)
-- **P0 — Hour-One Gate (0–1h):** go/no-go.
-- **P1 — Core engine (1–5h):** NIM client (Nano+Super), effect normalization + deterministic invariants, strict-JSON schema + validation, one ASK rule. Iterate the Super prompt against the family set.
-- **P2 — Eval harness (5–11h):** `run_eval.py` — all baselines + Bouncer + ablations, end-to-end + diagnostic, metrics table + Pareto chart + `failures.md`. Family splits, freeze, bootstrap CIs. **This is the winning artifact — produce it early.**
-- **P3 — MCP proxy + counterfactual demo (11–19h):** TS interceptor against mocked local tool servers; the email scenario (off vs on, task still completes); record the clip.
+## 13. 48-Hour Timeline (PHASES, not wall-clock)
+
+> **Note:** these `P#` are time PHASES (a sequence). They are a different axis from the parallel **Teammate lanes** in [§15](#15-team-split--3-teammates). Roughly: Teammate 1 drives P1(eval parts)+P2, Teammate 2 drives P3, Teammate 3 drives P4–P6. Status markers: ✅ done · 🟡 partial · ⬜ not started · ✂️ cut.
+
+- **P0 — Hour-One Gate (0–1h): ✅ DONE.** Go/no-go passed (GO, survives anti-leakage).
+- **P1 — Core engine (1–5h): 🟡 ~70%.** ✅ NIM client (Super; Lightning flaky), strict-JSON schema + validation, deterministic rules baseline. ⬜ TODO: compose deterministic invariants *with* Nemotron into one hybrid enforcement path, runtime effect normalization, the **ASK rule** (schema still binary ALLOW/BLOCK), iterate the Super prompt (fix the 3 self-consistency INVALIDs).
+- **P2 — Eval harness (5–11h): 🟡 ~60%.** ✅ `bouncer_eval.cli` (=run_eval), baselines, metrics table, `failures.md`, Pareto chart (`eval/plot_pareto.py`). ⬜ TODO: ablations (reasoning on/off, tiering), **end-to-end trajectory scoring** (attacker-objective-achieved), family splits + freeze + bootstrap CIs. **This is the winning artifact.**
+- **P3 — MCP proxy + counterfactual demo (11–19h): ⬜ handed to Codex.** TS interceptor against mocked local tool servers; the email scenario (off vs on, task still completes); record the clip.
 - **P4 — Dashboard + polish (19–26h):** results viz, decision trace, big ALLOW/BLOCK/ASK states.
 - **P4.5 — Hour-24 checkpoint:** core working? Only then admit stretch (tiering headline, Brev on-device, ElevenLabs, post-freeze red-team expansion).
 - **P5 — Story (26–40h):** deck, 3-min script, README, diagram, the category one-liner.
