@@ -35,3 +35,18 @@ We benchmark on a public prompt-injection suite (AgentDojo) with a 2-axis result
 ## Status
 
 🚧 Hackathon build in progress. Start here: [`MASTERPLAN.md`](./MASTERPLAN.md).
+
+## Go/no-go evaluation
+
+The first build gate compares a deterministic policy with Nemotron Lightning and Super on 48 frozen benign and attack cases. It uses NVIDIA's free hosted API and does not require a GPU.
+
+```bash
+# Validate the dataset and rule baseline without network calls
+python3 -m bouncer_eval.cli --dry-run
+
+# Run the full hosted-model comparison (loads the key from your shell)
+set -a; source .env; set +a
+python3 -m bouncer_eval.cli
+```
+
+Results are written to `eval/results/go_no_go_v1.md` and `.json`. Never commit `.env`; it is ignored by Git.
