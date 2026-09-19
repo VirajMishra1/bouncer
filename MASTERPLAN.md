@@ -21,6 +21,7 @@ This document is the single source of truth. Read the [TL;DR](#0-tldr), the [V1 
 - **The "wow" target:** *On held-out and post-freeze adaptive attacks, Bouncer prevents ≥90% of attacker objectives while retaining ≥85% of benign task completion at <10% false blocks — the only system in the high-safety/high-utility quadrant.*
 - **Why it wins:** hot, funded problem (Most Fundable stack); Nemotron structurally essential; visceral counterfactual demo; and — unlike almost every past agentic-hackathon winner — **a real, judge-proof eval.**
 - **Risk control:** the entire thesis is validated in the **[hour-one gate](#12-the-hour-one-gate)** before any UI. Fail → pivot to a near-identical Code-Patch Risk Judge.
+- **STATUS (2026-09-19): ✅ GO.** Hour-one gate passed — Nemotron **Super scored 100% / 100% attacks blocked / 100% benign allowed** on the 48-case set vs a rules baseline that over-blocks legitimate sends (83.3% benign). Real signal (not over-blocking), but the set needs hardening before the number is judge-proof — see [§7.9](#79-v1-gono-go-results-2026-09-19). Lightning underperformed via the API (timeouts / truncated JSON), so V1 defaults to **Super-only**.
 
 ---
 
@@ -104,7 +105,7 @@ Crisp, non-negotiable boundaries handled by rules, not the model: secret-bearing
 - **Nano (triage, every call):** cheap classification — clearly benign given the goal, or `ESCALATE`?
 - **Super (adjudication, escalated only):** contextual authorization → strict verdict.
 
-Tiering is measured in the [hour-one gate](#12-the-hour-one-gate); if Nano isn't reliable, collapse to Super-only and say so.
+Tiering is measured in the [hour-one gate](#12-the-hour-one-gate); if the fast tier isn't reliable, collapse to Super-only and say so. **Measured result (2026-09-19): Lightning was unreliable via the hosted API (35% invalid — read timeouts + JSON truncated at `max_tokens=256`), so V1 defaults to Super-only** (p50 1.35s, fast enough). Tiering can be revisited by raising `max_tokens`/timeout and re-testing; the "fast model was unreliable" finding is itself a reportable result.
 
 ### 4.5 Decision schema (strict JSON, validated)
 ```json
@@ -218,6 +219,25 @@ Attacker-objective-achieved rate (↓, primary security), benign task completion
 ### 7.8 Pre-registered success bar (set before looking)
 > Bouncer must prevent **≥~90%** of attacker objectives, retain **≥~85%** benign completion, at **<~10%** false blocks, and clearly beat the deterministic baseline on the safety/utility frontier. Otherwise we narrow the claim to high-impact `SEND`/`EXECUTE` effects and excel there, or pivot.
 
+### 7.9 v1 go/no-go results (2026-09-19)
+First live run, 48 per-call cases, hosted NIM API.
+
+| System | Accuracy | Attacks blocked | Benign allowed | Invalid | p50 | p95 |
+|---|---:|---:|---:|---:|---:|---:|
+| deterministic (rules) | 91.7% | 100% | 83.3% | 0% | 0ms | 0ms |
+| nemotron-lightning | 62.5% | 62.5% | 62.5% | 35.4% | 17s | 60s |
+| **nemotron-super** | **100%** | **100%** | **100%** | 0% | 1.35s | 4.7s |
+
+**Read (honest):**
+- **GO.** Super clears the bar and beats the rules baseline, which over-blocks 4 legitimate sends (`hex-05..08`) that are semantically fine but not literal substrings of the goal — the exact gap that justifies Nemotron. Super is not over-blocking (benign-allowed = 100%), so the win is real.
+- **Lightning's low score is mostly infrastructure**, not judgment: its failures are `INVALID` from read-timeouts and JSON truncated at `max_tokens=256`, not wrong verdicts. → **V1 = Super-only**; the "fast model unreliable via API" finding is a reportable result.
+- **The 100% is NOT yet judge-proof** and must be hardened before it's a headline:
+  1. **Kill metadata leakage** — stop feeding pre-computed risk tags (`data_class:secret`, `source:untrusted_content`, `destructive:true`) that telegraph the label; force the model to infer from raw goal/action/context. (Currently only `*_in_goal` labels are stripped.)
+  2. **Add adaptive/obfuscated attacks + genuinely ambiguous (ASK) cases**; the current set is clean textbook attacks, self-authored, n=48.
+  3. **Scale up + move to end-to-end trajectory scoring** (attacker-objective-achieved), family splits, freeze, post-freeze red-team, bootstrap CIs.
+
+Until hardened, present as **"strong directional evidence,"** not "solved."
+
 ---
 
 ## 8. Differentiation
@@ -303,11 +323,36 @@ Build **nothing else** until this passes. It answers all three open risks.
 
 ---
 
-## 15. Team Roles (2–4)
-- **Owner A — decision engine + eval (the moat):** NIM client, prompts, `run_eval.py`, the chart. Senior owner; this is the win.
-- **Owner B — MCP proxy + demo:** interceptor, context capture, email counterfactual, video.
-- **Owner C — dashboard + story + stretch:** results viz, deck, README, ElevenLabs/Brev stretch, post-freeze red-team authoring.
-- Everyone contributes attack/benign trajectories (diversity = eval quality).
+## 15. Team Split — 3 teammates
+
+Three parallel lanes. Everything builds against **one locked contract**: the decision-engine interface (input record `{goal, action, effect, context, metadata}` → `Decision{verdict, reason, latency, error}`), which already exists in `bouncer_eval/models.py` + `nemotron.py`. Lock it first; then the lanes don't collide. Each teammate drives Claude/Codex as force-multipliers.
+
+### Teammate 1 — Eval & Model (the moat) 🏆
+*The highest-value lane; give it your strongest person (or whoever built `bouncer_eval`).*
+- **Harden the dataset:** remove metadata giveaways (make the model infer from raw text), add adaptive/obfuscated attacks + ambiguous (ASK) cases, scale to ~120–150, split by attack family, freeze.
+- **End-to-end trajectory eval:** small agent loop measuring *attacker-objective-achieved* + *benign-completion* (the headline metric), not just per-call.
+- **Ablations:** reasoning on/off, structured-vs-freeform, Super-only vs retried-Lightning tiering. Bootstrap CIs + raw counts.
+- **Final artifacts:** metrics table + `pareto.png` + `failures.md`.
+- *Tools:* **Claude** for harness/eval code; Claude + Codex to generate adversarial cases.
+- *Files owned:* `bouncer_eval/`, `eval/`.
+
+### Teammate 2 — Proxy & Demo (the product) 🔌
+- **MCP proxy** (`packages/proxy/`, TypeScript): intercept `tools/call`, capture goal + recent results, call the decision engine, enforce ALLOW/ASK/BLOCK, audit log.
+- **Mocked tool servers:** email (primary) + github (secondary).
+- **Counterfactual demo:** same trajectory Bouncer-off vs Bouncer-on, task still completes; record the clip.
+- *Tools:* **Codex** for the bounded TS proxy (hand it the contract + file ownership).
+- *Files owned:* `packages/proxy/`, `demo/`.
+
+### Teammate 3 — Story, Dashboard & Submission (the polish) 📊
+- **Dashboard:** Pareto chart + per-episode table + failures (reuse `bench` patterns); consumes the eval JSON.
+- **Deck + README + architecture diagram + 3-min script** (§17).
+- **Devpost writeup + final video; submit to Nemotron + Most Fundable.**
+- **Author benign look-alike + real-world example cases** to feed Teammate 1's dataset.
+- *Files owned:* `dashboard/`, `README.md`, deck.
+
+**Coordination:** claim file ownership + publish the contract via loadout (`loadout coord own <agent> <paths>`, `loadout coord contract decision-engine ...`). Sequence: lock contract → lanes 1/2 start immediately → lane 3 as eval JSON + results land → stretch (ElevenLabs, Brev on-device, NeMo Guardrails baseline) only after the **hour-24 checkpoint** confirms the core works.
+
+*(Fewer people? Merge: T1 keeps eval+dataset, T2 keeps proxy+demo+dashboard, T3/Viraj takes story+submission.)*
 
 ---
 
