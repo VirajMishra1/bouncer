@@ -1,0 +1,25 @@
+# loadout coordination logs (internal strategy transcripts)
+.handoff/
+.loadout/
+
+# secrets
+.env
+.env.local
+*.key
+
+# python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+
+# node
+node_modules/
+dist/
+.next/
+*.log
+
+# eval artifacts (keep results/ committed, ignore scratch)
+eval/results/scratch/
+.DS_Store
