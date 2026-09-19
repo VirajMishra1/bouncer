@@ -21,7 +21,7 @@ This document is the single source of truth. Read the [TL;DR](#0-tldr), the [V1 
 - **The "wow" target:** *On held-out and post-freeze adaptive attacks, Bouncer prevents ≥90% of attacker objectives while retaining ≥85% of benign task completion at <10% false blocks — the only system in the high-safety/high-utility quadrant.*
 - **Why it wins:** hot, funded problem (Most Fundable stack); Nemotron structurally essential; visceral counterfactual demo; and — unlike almost every past agentic-hackathon winner — **a real, judge-proof eval.**
 - **Risk control:** the entire thesis is validated in the **[hour-one gate](#12-the-hour-one-gate)** before any UI. Fail → pivot to a near-identical Code-Patch Risk Judge.
-- **STATUS (2026-09-19): ✅ GO.** Hour-one gate passed — Nemotron **Super scored 100% / 100% attacks blocked / 100% benign allowed** on the 48-case set vs a rules baseline that over-blocks legitimate sends (83.3% benign). Real signal (not over-blocking), but the set needs hardening before the number is judge-proof — see [§7.9](#79-v1-gono-go-results-2026-09-19). Lightning underperformed via the API (timeouts / truncated JSON), so V1 defaults to **Super-only**.
+- **STATUS (2026-09-19): ✅ GO (survives anti-leakage).** After removing the metadata giveaways, Nemotron **Super = 93.8% accuracy / 100% attacks blocked / 87.5% benign allowed**, still beating the rules baseline (91.7% / 100% / 83.3%) and clearing the 85% bar — so the win is genuine reasoning, not label-reading. (The first, leaky run scored a suspicious 100%; the honest 93.8% is the number we show.) Lightning underperformed via the API (timeouts / truncated JSON), so V1 defaults to **Super-only**. See [§7.9](#79-v1-gono-go-results-2026-09-19).
 
 ---
 
@@ -232,7 +232,7 @@ First live run, 48 per-call cases, hosted NIM API.
 - **GO.** Super clears the bar and beats the rules baseline, which over-blocks 4 legitimate sends (`hex-05..08`) that are semantically fine but not literal substrings of the goal — the exact gap that justifies Nemotron. Super is not over-blocking (benign-allowed = 100%), so the win is real.
 - **Lightning's low score is mostly infrastructure**, not judgment: its failures are `INVALID` from read-timeouts and JSON truncated at `max_tokens=256`, not wrong verdicts. → **V1 = Super-only**; the "fast model unreliable via API" finding is a reportable result.
 - **The 100% is NOT yet judge-proof** and must be hardened before it's a headline:
-  1. **Kill metadata leakage** — stop feeding pre-computed risk tags (`data_class:secret`, `source:untrusted_content`, `destructive:true`) that telegraph the label; force the model to infer from raw goal/action/context. (Currently only `*_in_goal` labels are stripped.)
+  1. ✅ **DONE — killed metadata leakage.** Risk tags (`data_class`/`source`/`destructive`/`sensitivity`) are no longer sent; the model infers from raw goal/action/context. **Leak-fixed re-run: Super 93.8% acc / 100% attacks blocked / 87.5% benign allowed** vs deterministic 91.7% / 100% / 83.3%. The win survives without the giveaways. The 3 remaining misses are *benign* cases flagged INVALID by the verdict/reason self-consistency guard (over-cautious phrasing) — not attacks getting through; a fixable prompt/parse nuance and a good "failure we found."
   2. **Add adaptive/obfuscated attacks + genuinely ambiguous (ASK) cases**; the current set is clean textbook attacks, self-authored, n=48.
   3. **Scale up + move to end-to-end trajectory scoring** (attacker-objective-achieved), family splits, freeze, post-freeze red-team, bootstrap CIs.
 
