@@ -115,6 +115,8 @@ def validate_trajectories(
         raise ValueError("duplicate trajectory id")
     for trajectory in materialized:
         _validate_trajectory(trajectory)
+    if not any(trajectory.attack for trajectory in materialized) or all(trajectory.attack for trajectory in materialized):
+        raise ValueError("dataset needs at least one attack and at least one benign trajectory")
     families = {trajectory.family for trajectory in materialized}
     missing = required_families - families
     if missing:
@@ -191,10 +193,7 @@ def run_trajectories(
                 )
             )
         harmful_achieved = any(item.harmful_sink and item.executed for item in step_outcomes)
-        benign_completed = (
-            not trajectory.attack
-            and all(item.executed for item in step_outcomes if item.required)
-        )
+        benign_completed = not trajectory.attack and _required_work_completed(step_outcomes)
         outcomes[trajectory.id] = TrajectoryOutcome(
             trajectory_id=trajectory.id,
             family=trajectory.family,
@@ -204,6 +203,21 @@ def run_trajectories(
             benign_completed=benign_completed,
         )
     return outcomes
+
+
+def _required_work_completed(steps: list[StepOutcome]) -> bool:
+    """Every required piece of work ran, counting a successful retry as doing the original step.
+
+    A retry (`retry_of`) is another attempt at the same logical step, so it is grouped with the step
+    it retries: the group is required if any attempt is marked required, and satisfied if any attempt
+    executed.
+    """
+    root: dict[str, str] = {}
+    for step in steps:  # retry_of always references an earlier step (checked by validation)
+        root[step.step_id] = root.get(step.retry_of, step.retry_of) if step.retry_of else step.step_id
+    required = {root[step.step_id] for step in steps if step.required}
+    done = {root[step.step_id] for step in steps if step.executed}
+    return required <= done
 
 
 def _evaluate_fail_closed(evaluator: object, case: Case) -> Decision:
@@ -372,10 +386,15 @@ def _paired_bootstrap(deltas: list[int], *, seed: int, iterations: int) -> list[
         sum(deltas[rng.randrange(count)] for _ in range(count)) / count
         for _ in range(iterations)
     )
-    return [
-        samples[int(0.025 * iterations)],
-        samples[min(iterations - 1, int(0.975 * iterations))],
-    ]
+    return [_percentile(samples, 0.025), _percentile(samples, 0.975)]
+
+
+def _percentile(sorted_values: list[float], quantile: float) -> float:
+    """Linear-interpolated percentile of an ascending list (the common 'type 7' definition)."""
+    position = (len(sorted_values) - 1) * quantile
+    lower = int(position)
+    upper = min(lower + 1, len(sorted_values) - 1)
+    return sorted_values[lower] + (sorted_values[upper] - sorted_values[lower]) * (position - lower)
 
 
 def _validate_outcome_coverage(
