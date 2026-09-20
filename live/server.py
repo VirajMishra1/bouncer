@@ -23,6 +23,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import codex_watch
+import context as context_mod
 import judge as judge_mod
 
 ROOT = Path(__file__).parent
@@ -36,7 +37,7 @@ clients = set()            # queue.Queue per connected page
 events = []                # (id, json_str) since the last prompt
 next_id = 1
 state = {"last_popup": 0.0}
-sessions = {}              # session id -> {"goal","seq","recent"}
+sessions = {}              # session id -> {"goal","seq","recent","decisions"}
 seen = {}                  # duplicate suppression: the same hook can be registered twice (user + project)
 judge_pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="judge")   # one worker keeps events in order
 
@@ -113,18 +114,40 @@ def _duplicate(p):
     return False
 
 
-def _decide(goal, tool, inp, recent, meta):
+def _decide(goal, tool, inp, recent, meta, session=None):
     """Judge one call and broadcast it. Runs inline (enforce mode) or on the judge worker (watch-only)."""
     try:
-        d = judge_mod.judge_with_source(goal, tool, inp, recent)
+        d = judge_mod.judge_with_source(goal, tool, inp, recent, session=session)
     except Exception as e:      # a broken judge must not kill the server; show it as an unresolved ASK
         d = {"verdict": "ASK", "effect": "EXECUTE", "intent_relationship": "ambiguous", "intent_match": 0.0,
              "reason": f"The judge failed ({type(e).__name__}); nothing was decided.",
              "evidence": {"user_goal": goal, "proposed_action": f"{tool}()", "mismatch": None}}
     d.update(tool=tool, summary=judge_mod.summarize(tool, inp), table=judge_mod.table_for(tool, inp),
              args=inp if len(json.dumps(inp)) < 600 else {"note": "large input"}, ts=time.time(), goal=goal, **meta)
+    decisions = sessions.get(meta.get("session"), {}).get("decisions")
+    if decisions is not None and meta.get("tool_use_id"):
+        decisions[meta["tool_use_id"]] = d.get("verdict")      # so the next call's context shows what was decided
+        while len(decisions) > 200:
+            decisions.pop(next(iter(decisions)))
     broadcast({"type": "call", "decision": d})
     return d
+
+
+def _session_context(p, agent, st):
+    """The agent's own context for the overseer. Built at hook time so it is a point-in-time snapshot. Never raises."""
+    try:
+        decisions = dict(st.get("decisions") or {})
+        if agent == "codex":
+            raw = p.get("session_context")
+            if isinstance(raw, dict):
+                return context_mod.sanitize_session(context_mod.annotate_prior(dict(raw), decisions))
+            return None
+        path = p.get("transcript_path")
+        if path:
+            return context_mod.claude_session_context(path, p.get("tool_use_id"), decisions=decisions)
+    except Exception:
+        pass
+    return None
 
 
 def handle_hook(p, sync=False):
@@ -133,7 +156,7 @@ def handle_hook(p, sync=False):
     agent = p.get("agent") or "claude"
     if ev in ("UserPromptSubmit", "PreToolUse", "PostToolUse", "Stop") and _duplicate(p):
         return {"ok": True, "duplicate": True}
-    st = sessions.setdefault(sid, {"goal": "", "seq": 0, "recent": []})
+    st = sessions.setdefault(sid, {"goal": "", "seq": 0, "recent": [], "decisions": {}})
     out = {"ok": True}
     if ev == "UserPromptSubmit":
         goal = judge_mod.redact((p.get("prompt") or "").strip())
@@ -148,11 +171,12 @@ def handle_hook(p, sync=False):
         st["seq"] += 1
         recent = list(st["recent"])
         st["recent"] = (st["recent"] + [f"{tool}:{judge_mod.summarize(tool, inp)}"])[-2:]
+        ctx = _session_context(p, agent, st)
         meta = dict(seq=st["seq"], agent=agent, session=sid, tool_use_id=p.get("tool_use_id"), enforce=bool(p.get("bouncer_enforce")))
         if meta["enforce"] or sync:
-            out["decision"] = _decide(st["goal"], tool, inp, recent, meta)      # the agent waits for a real verdict
+            out["decision"] = _decide(st["goal"], tool, inp, recent, meta, ctx)      # the agent waits for a real verdict
         else:
-            judge_pool.submit(_decide, st["goal"], tool, inp, recent, meta)     # watch-only: never make the agent wait
+            judge_pool.submit(_decide, st["goal"], tool, inp, recent, meta, ctx)     # watch-only: never make the agent wait
     elif ev == "PostToolUse":
         broadcast({"type": "result", "tool_use_id": p.get("tool_use_id"), "tool": p.get("tool_name"), "agent": agent})
     elif ev == "Stop":
