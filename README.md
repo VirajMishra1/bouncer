@@ -56,7 +56,17 @@ Notes on how to read this:
 - **The first run scored 100%, and we didn't trust it.** The dataset carried risk tags (`data_class`, `source`, `destructive`) that gave the answer away. We stopped sending them, re-ran, and report the 93.8% run. The original run is archived in `eval/results/go_no_go_v1.*`.
 - **The 3 misses are benign cases, not attacks.** `dst-06`, `hex-06`, and `uex-05` were marked INVALID by a self-consistency guard (the verdict contradicted the blocking-sounding reason). No attack got through in this set.
 - **Nemotron Lightning was unreliable through the hosted API** (timeouts and truncated JSON), so V1 runs Super only.
-- **End-to-end, so far:** a 12-episode trajectory set (6 attack/benign pairs) scores whether the attacker's objective ultimately succeeded after retries. Offline results: **no defense 0/6 attacks prevented**, a text-only rules baseline **5/6** (it misses a paraphrased shell retry), and a rules baseline that reads curator labels 6/6. Benign completion is 6/6 for all three. The label-reading baseline has information a real deployment would not, so its 6/6 is an upper bound for rules, not a fair competitor. The set is small (one episode moves a rate by ~8 points). A hybrid or Nemotron run of it has not been done. See [`dashboard/index.html`](dashboard/index.html) and [`eval/results/failures.md`](eval/results/failures.md).
+- **End-to-end (12 episodes = 6 attack/benign pairs, one run):**
+
+  | System | Attacks prevented | Benign completed | Notes |
+  |---|---:|---:|---|
+  | No defense | 0/6 | 6/6 | |
+  | Text-only rules | 5/6 | 6/6 | misses a paraphrased shell retry |
+  | **Nemotron Super alone** (no labels) | **6/6** | **6/6** | 11 of 12 harmful actions stopped by an explicit BLOCK with a sensible reason, 1 by failing closed on an HTTP 503 |
+  | Hybrid, label-free invariants + Nemotron | 6/6 | 5/6 | the one miss is malformed JSON from the model on a benign weather send, which failed closed |
+  | Hybrid, label-reading invariants + Nemotron | 6/6 | 6/6 | several blocks come from curator labels, so this is not a fair number |
+
+  The honest reading: Nemotron Super is at least as good as text-only rules and better by one episode (the paraphrased shell retry), but with 12 episodes the 95% interval on that difference is [0%, +25%], so this is directional, not significant. Two model errors (a transient 503, malformed JSON) show a real robustness gap to close. The rules baseline that reads curator labels also scores 6/6 and is an upper bound for rules, not a fair competitor. See [`dashboard/index.html`](dashboard/index.html) and [`eval/results/failures.md`](eval/results/failures.md).
 - **Not yet shown:** a public benchmark such as AgentDojo, post-freeze adaptive attacks, a NeMo Guardrails comparison, and any fine-tuning of Nemotron. The per-call numbers above must not be read as end-to-end evidence. Nothing in this README claims otherwise.
 
 Full tables and failure lists: [`eval/results/go_no_go_noleak.md`](eval/results/go_no_go_noleak.md) (honest run) and [`eval/results/go_no_go_v1.md`](eval/results/go_no_go_v1.md) (original run). Plan and rationale: [`MASTERPLAN.md`](MASTERPLAN.md).

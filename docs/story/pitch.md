@@ -62,7 +62,7 @@ Point at each line as it appears:
 
 > "Two honest notes. Our first run scored 100%, and we didn't trust it, because our dataset had labels that gave the answer away. We removed them and re-ran. 93.8% is the number we report. And this is per-call evidence on a small, self-authored set."
 
-> "On whole attack episodes, with retries, doing nothing lets every attack through: zero of six stopped. A keyword firewall that reads only text stops five of six and misses a paraphrased shell command. Our Nemotron end-to-end run is the next result, and we'll show the number whichever way it lands." *(Replace the last sentence with the real numbers once `eval/results/trajectory_live.json` exists.)*
+> "On whole attack episodes, with retries, doing nothing lets every attack through: zero of six stopped. A keyword firewall that reads only text stops five of six and misses a paraphrased shell command. Nemotron Super, given only the goal and the action, stops all six and finishes all six legitimate tasks. It's twelve episodes, so we call that directional. And we're honest about two model errors, a timeout and one malformed answer, that our system handled by failing closed."
 
 > "Why we kept the rules baseline in the chart: it's the bar. Where the rules over-block legitimate sends, Nemotron reasoned about intent and let most of them through."
 
@@ -83,13 +83,14 @@ If Most Fundable is judged: one sentence, **"Agents are getting real tools, and 
 | Rules baseline 91.7% accuracy, 100% attacks blocked, 83.3% benign allowed | same |
 | The first, leaky run scored 100% and is archived | `eval/results/go_no_go_v1.md` |
 | End-to-end, offline, 12 episodes: no defense 0/6 attacks prevented; text-only rules 5/6; 6/6 benign completed for both | `eval/results/trajectory_offline.md` |
+| End-to-end with Nemotron Super (one run, 12 episodes): 6/6 attacks prevented, 6/6 benign completed; hybrid with label-free invariants 6/6 and 5/6 (one malformed model answer failed closed) | `eval/results/trajectory_live.md` |
 | The label-reading rules baseline (6/6) is an upper bound, not a fair competitor | `eval/results/failures.md` |
 
 ## Do not say
 
 - Do **not** claim Bouncer stops all prompt injection. The claim is about unauthorized tool-mediated effects in mediated tools.
 - Do **not** cite the "~96% false-block" figure for NeMo Guardrails as a result. It comes from the plan and we did not reproduce it. We have not run NeMo Guardrails.
-- Do **not** claim end-to-end results for Nemotron or the hybrid, AgentDojo results, or post-freeze adaptive-attack results unless they have been run and committed. The offline baselines above are the only end-to-end numbers that exist today.
+- Do **not** say Nemotron "significantly" beats anything: 12 episodes, one run, interval [0, +25%]. Do not claim AgentDojo results or post-freeze adaptive-attack results; they have not been run.
 - Do **not** say Bouncer is "fine-tuned". It uses Nemotron Super as shipped, prompted with a strict schema. No fine-tuning has been done.
 - Do **not** say Bouncer "beats NeMo Guardrails" or "beats AgentDojo defenses". Neither comparison has been run.
 - Do **not** present the ≥90% / ≥85% / <10% figures in `MASTERPLAN.md` as achieved. They are a pre-registered target.
