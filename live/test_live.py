@@ -18,6 +18,7 @@ _tmp = tempfile.mkdtemp()
 os.environ["BOUNCER_LOG"] = str(Path(_tmp) / "log.jsonl")
 os.environ["BOUNCER_NO_POPUP"] = "1"
 
+import audit_to_scenario  # noqa: E402
 import codex_watch  # noqa: E402
 import install_hooks  # noqa: E402
 import judge  # noqa: E402
@@ -210,6 +211,42 @@ class InstallerTests(unittest.TestCase):
             command = groups[0]["hooks"][0]["command"]
             self.assertIn("$CLAUDE_PROJECT_DIR/live/hook.py", command)
             self.assertNotIn("ENFORCE", command)
+
+
+class AuditReplayTests(unittest.TestCase):
+    LOG = [
+        {"timestamp": "t", "toolName": "email_read_message", "effect": "READ", "verdict": "ALLOW", "reason": "Directly requested.", "forwarded": True, "latencyMs": 3, "resource": "mail-1"},
+        {"timestamp": "t", "toolName": "email_send_message", "effect": "SEND", "verdict": "ASK", "reason": "Destination attacker@evil.com was not named in the original goal.", "forwarded": False, "latencyMs": 1, "destination": "attacker@evil.com"},
+        {"timestamp": "t", "toolName": "email_delete_message", "effect": "EXECUTE", "verdict": "BLOCK", "reason": "destructive operation", "forwarded": False, "latencyMs": 0},
+    ]
+
+    def test_converts_records_in_order_with_the_supplied_goal(self):
+        payload, skipped = audit_to_scenario.convert([json.dumps(r) for r in self.LOG], "Read my emails")
+        self.assertEqual(skipped, 0)
+        self.assertEqual(payload["goal"], "Read my emails")
+        self.assertEqual([d["verdict"] for d in payload["decisions"]], ["ALLOW", "ASK", "BLOCK"])
+        self.assertEqual([d["seq"] for d in payload["decisions"]], [1, 2, 3])
+        self.assertEqual(payload["decisions"][1]["summary"], "attacker@evil.com")
+        self.assertEqual(payload["decisions"][0]["summary"], "mail-1")
+        self.assertNotIn("intent_match", payload["decisions"][0])
+
+    def test_bad_lines_are_skipped_and_secrets_scrubbed(self):
+        key = fake_key("nvapi-", "abcdefghijklmnop1234")
+        rec = dict(self.LOG[0], reason=f"used key {key}")
+        payload, skipped = audit_to_scenario.convert(["not json", "", json.dumps(rec), json.dumps({"verdict": "MAYBE", "toolName": "x"})], f"goal {key}")
+        self.assertEqual(skipped, 2)
+        self.assertNotIn(key, json.dumps(payload))
+
+    def test_output_is_loadable_by_the_page_format(self):
+        payload, _ = audit_to_scenario.convert([json.dumps(r) for r in self.LOG], "g")
+        for d in payload["decisions"]:
+            for field in ("tool", "effect", "verdict", "reason", "evidence"):
+                self.assertIn(field, d)
+
+    def test_cli_exits_2_when_nothing_is_usable(self):
+        bad = Path(tempfile.mkdtemp()) / "a.jsonl"
+        bad.write_text("garbage\n")
+        self.assertEqual(audit_to_scenario.main([str(bad), "--goal", "g"]), 2)
 
 
 class JudgeTests(unittest.TestCase):

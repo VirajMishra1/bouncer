@@ -77,6 +77,7 @@ A small local web page shows every tool call your agent makes as a person queuei
 - **Claude Code:** open this repo in Claude Code and approve the project hooks in [`.claude/settings.json`](.claude/settings.json). Send a prompt and a window opens. To get it in every project on your machine instead: `python3 live/install_hooks.py` (dry run), then `--apply`. `--uninstall` reverses it.
 - **Codex:** run `python3 live/server.py` once and leave it running. It reads the session files Codex already writes (read-only, nothing in Codex is changed) for threads opened in this repo. Add other folders with `BOUNCER_CODEX_CWD=/path`. Unrelated chats are ignored.
 - **No agent handy:** open `live/index.html` for the scripted email-injection demo, with a Bouncer ON/OFF switch.
+- **Replay a real proxy run:** `python3 live/audit_to_scenario.py bouncer-audit.jsonl --goal "Read my emails and summarize" -o replay.json`, then use **Load audit log** on `live/index.html`. The audit log does not store the goal or arguments, so you supply the goal.
 
 Defaults are conservative. It is **watch-only**: it shows what Bouncer *would* decide and never blocks anything (`BOUNCER_ENFORCE=1` makes BLOCK and ASK real for Claude Code). It is **local**: verdicts come from local rules and nothing leaves your machine (`BOUNCER_JUDGE=nemotron` with `NVIDIA_API_KEY` uses Nemotron Super, and tool input is redacted and truncated first). Secrets are scrubbed from everything it shows or logs. `BOUNCER_NO_POPUP=1` stops the window opening.
 
