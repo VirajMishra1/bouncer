@@ -35,3 +35,5 @@ Generate the short, secret-free terminal clip from the deterministic replay:
 ```
 
 The MP4 is written to `demo/artifacts/bouncer-demo.mp4`.
+
+For the 29-second launch cut, see [`artifacts/bouncer-trailer.mp4`](artifacts/bouncer-trailer.mp4). Its reproducible visual, Kokoro voice-over, and sound-design sources are in [`trailer/`](trailer/).
