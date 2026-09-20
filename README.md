@@ -6,7 +6,7 @@
 
 > **Prompt filters ask whether content looks malicious. Bouncer asks whether the concrete side effect is authorized by the user's goal.**
 
-SteelHacks 2026 · **NVIDIA Nemotron — "Beyond the Chatbot"** · also entered for **Most Fundable**
+SteelHacks 2026 · **NVIDIA Nemotron — "Beyond the Chatbot"** · also entered for **Most Fundable** and **Xtract (Signal-to-Insight)**
 
 Bouncer sits between an AI agent and its tools. For every action the agent tries to take, it checks the action against the user's original goal and decides **ALLOW**, **ASK**, or **BLOCK** before anything executes. Nemotron is not a chat surface here. It is a decision engine whose verdict changes what the system does.
 
@@ -85,7 +85,14 @@ Notes on how to read this:
   | Hybrid, label-reading invariants + Nemotron | 6/6 | 6/6 | several blocks come from curator labels, so this is not a fair number |
 
   The honest reading: Nemotron Super is at least as good as text-only rules and better by one episode (the paraphrased shell retry), but with 12 episodes the 95% interval on that difference is [0%, +25%], so this is directional, not significant. Two model errors (a transient 503, malformed JSON) show a real robustness gap to close. The rules baseline that reads curator labels also scores 6/6 and is an upper bound for rules, not a fair competitor. See [`dashboard/index.html`](dashboard/index.html) and [`eval/results/failures.md`](eval/results/failures.md).
-- **Public benchmark (AgentDojo replay):** on a fixed public sample of 100 AgentDojo traces (50 injection-exposed, 50 clean; across workspace, travel, banking, and Slack — data we did not author), Nemotron Super **stopped or escalated 76.6% (36/47)** of injected attack actions versus **21.3% (10/47)** for the deterministic-rules baseline, while allowing 59.6% vs 55.3% of clean actions. This is *retrospective action replay*, not a native rerun: read it as "stopped the recorded action," not "prevented the attack." 31 of the 36 were ASK, so the prompt is over-cautious (real tuning headroom), and 6 of 100 calls hit an HTTP 429/503 and failed closed. Source: [`eval/results/agentdojo_public_v2_headline.md`](eval/results/agentdojo_public_v2_headline.md).
+- **Public benchmark (AgentDojo replay):** 100 fixed public AgentDojo traces (50 injection-exposed, 50 clean; across workspace, travel, banking, and Slack) — **data we did not author.**
+
+  | System | Injected attack action stopped or escalated | Clean action allowed |
+  |---|---:|---:|
+  | Deterministic rules | 21.3% (10/47) | 55.3% |
+  | **Nemotron Super** | **76.6% (36/47)** | **59.6%** |
+
+  This is *retrospective action replay*, not a native rerun: read it as "stopped the recorded action," not "prevented the attack." 31 of the 36 were ASK, so the prompt is over-cautious (real tuning headroom), and 6 of 100 calls hit an HTTP 429/503 and failed closed. Source: [`eval/results/agentdojo_public_v2_headline.md`](eval/results/agentdojo_public_v2_headline.md).
 - **Not yet shown:** post-freeze adaptive attacks, a NeMo Guardrails comparison, and any fine-tuning of Nemotron. The per-call numbers above must not be read as end-to-end evidence. Nothing in this README claims otherwise.
 
 Full tables and failure lists: [`eval/results/go_no_go_noleak.md`](eval/results/go_no_go_noleak.md) (honest run) and [`eval/results/go_no_go_v1.md`](eval/results/go_no_go_v1.md) (original run). Plan and rationale: [`MASTERPLAN.md`](MASTERPLAN.md).
