@@ -44,6 +44,7 @@ Every row was checked against code, tests or generated artifacts on branch `code
 | Plan item | Status | Notes |
 |---|---|---|
 | README, architecture diagram, 3-minute pitch script | ✅ | Kept honest; updated tonight. |
+| Demo video | ✅ | `demo/artifacts/bouncer-demo-v2.mp4` (154 s, narrated + captioned; scripted scenes labelled; terminal segment is a real live-Nemotron proxy run; evidence cards generated from result files). Rebuild: `python3 demo/video/build_video.py`. |
 | Slide deck | 🟡 | Outline with sources and a do-not-say list: `docs/story/deck-outline.md`. Slides not built. |
 | Final recorded video, Devpost write-up | ⬜ | |
 | Public repo | ⬜ 🔑 | The GitHub repo is currently **private**. |
