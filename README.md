@@ -89,6 +89,14 @@ The demo uses real MCP clients and servers with mocked, local tool servers. The 
 - **Bouncer OFF:** the forward succeeds.
 - **Bouncer ON:** the forward is refused, and the legitimate summary still completes.
 
+<p align="center">
+  <a href="demo/artifacts/bouncer-demo-v2.mp4">
+    <img src="docs/assets/bouncer-demo-preview.gif" alt="Animated Bouncer demo: an AI agent reads a malicious instruction, Bouncer checks the proposed action against the user's goal, and the unauthorized send is denied." width="760">
+  </a>
+</p>
+
+<p align="center"><strong>▶ Click the preview to watch the full 2.5-minute demo.</strong></p>
+
 **The full demo video (2.5 min):** [`demo/artifacts/bouncer-demo-v2.mp4`](demo/artifacts/bouncer-demo-v2.mp4). The animated scenes are labelled as a scripted replay; the terminal segment is a real run through the MCP proxy judged live by Nemotron Super; the evidence cards are generated from the result files. Rebuild it with `python3 demo/video/build_video.py` (see [`demo/video/README.md`](demo/video/README.md)). A shorter terminal-only clip is at [`demo/artifacts/bouncer-demo.mp4`](demo/artifacts/bouncer-demo.mp4), and a 29-second launch trailer is at [`demo/artifacts/bouncer-trailer.mp4`](demo/artifacts/bouncer-trailer.mp4). More in [`demo/README.md`](demo/README.md), and the 3-minute script is in [`docs/story/pitch.md`](docs/story/pitch.md).
 
 ## Bouncer Live: watch your agent get checked
