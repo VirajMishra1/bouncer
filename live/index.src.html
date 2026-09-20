@@ -102,6 +102,8 @@
   .clip .m{margin-top:3px;height:5px;background:#ddd2b4;border-radius:3px;overflow:hidden}
   .clip .m i{display:block;height:100%;background:#7a6b3a}
   .clip .o{font-size:12px;color:#7a6b3a;margin-top:2px;font-style:italic}
+  .clip .jd{font-size:11px;font-weight:700;letter-spacing:.3px;color:#5b4d1f;margin-top:3px}
+  .clip .jd.nem{color:#0b6b4b}
   .empty{color:#8a7f5f;font-size:13px}
 
   /* ambient scene motion (real-time) */
@@ -674,11 +676,13 @@ function parseLog(text){text=text.trim();try{const o=JSON.parse(text);return Arr
 function setCounters(){$("cIn").textContent=counters.in;$("cAsk").textContent=counters.ask;$("cOut").textContent=counters.out;$("cBad").textContent=counters.bad;$("tBad").classList.toggle("hot",counters.bad>0);}
 function narrate(html){$("narrator").innerHTML=html;}
 function narrateText(prefix,text){const n=$("narrator");n.innerHTML="";const b=document.createElement("b");b.textContent=prefix;n.append(b," ",document.createTextNode(text));}
+const JUDGES={"nemotron":"Nemotron Super","hard-rules":"a hard rule (no model needed)","local-rules":"local rules (no API key set)","nemotron-unavailable":"nothing: Nemotron was unreachable, so it failed closed"};
 function addLedger(d,kind,tagText){
   const ol=$("ledger");if(ol.querySelector(".empty"))ol.innerHTML="";
   const li=document.createElement("li");li.className=kind;const pct=Math.round(d.intent_match*100);
   li.innerHTML=`<div class="t"><span>#${esc(d.seq)} ${esc(d.tool)}</span><span class="tag">${esc((d.agent?d.agent.toUpperCase()+" · ":"")+tagText)}</span></div>`
     +(d.summary?`<div class="r" style="font-family:ui-monospace,Menlo,monospace;font-size:12px">${esc(d.summary)}</div>`:"")
+    +(d.judge?`<div class="jd ${d.judge==="nemotron"?"nem":""}">judged by ${esc(JUDGES[d.judge]||d.judge)}</div>`:"")
     +(kind!=="OFF"?`<div class="r">${esc(d.reason)}</div><div class="m" title="How well this matches your goal"><i style="width:${pct}%"></i></div>`:`<div class="r">Nobody checked this one.</div>`)+`<div class="o"></div>`;
   ol.prepend(li);return{note(t){li.querySelector(".o").textContent=t;}};
 }
