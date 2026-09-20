@@ -14,6 +14,7 @@ import json
 import os
 import sys
 from collections.abc import Callable, Sequence
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
@@ -76,6 +77,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--manifest", type=Path, default=DEFAULT_MANIFEST)
     parser.add_argument("--systems", nargs="+", choices=SYSTEMS, default=["deterministic"])
     parser.add_argument("--min-interval", type=float, default=1.6, help="seconds between hosted-API requests")
+    parser.add_argument("--workers", type=int, default=1, help="parallel hosted requests (use only when the API permits it)")
     return parser
 
 
@@ -166,6 +168,9 @@ def main(argv: Sequence[str] | None = None, *, evaluator_factory: EvaluatorFacto
     if args.limit < 1:
         print("--limit must be at least 1.", file=sys.stderr)
         return 2
+    if args.workers < 1:
+        print("--workers must be at least 1.", file=sys.stderr)
+        return 2
     if args.sample_mode == "public-v2" and args.limit != 100:
         print("--sample-mode public-v2 requires --limit 100 (50 clean + 50 exposed attacks).", file=sys.stderr)
         return 2
@@ -190,8 +195,17 @@ def main(argv: Sequence[str] | None = None, *, evaluator_factory: EvaluatorFacto
     for system in systems:
         evaluator = evaluator_factory(system)
         if system in HOSTED:
-            print(f"Replaying {len(sample)} trajectories through {system} (hosted API)...")
-        decisions[system] = {t.id: [_decide(evaluator, case) for case in cases[t.id]] for t in sample}
+            print(f"Replaying {len(sample)} trajectories through {system} (hosted API, {args.workers} workers)...", flush=True)
+        flat = [(t.id, case) for t in sample for case in cases[t.id]]
+        if system in HOSTED and args.workers > 1:
+            with ThreadPoolExecutor(max_workers=args.workers) as pool:
+                resolved = list(pool.map(lambda item: _decide(evaluator, item[1]), flat))
+        else:
+            resolved = [_decide(evaluator, case) for _, case in flat]
+        by_trajectory = {t.id: [] for t in sample}
+        for (trajectory_id, _), decision in zip(flat, resolved):
+            by_trajectory[trajectory_id].append(decision)
+        decisions[system] = by_trajectory
 
     rows = []
     for trajectory in sample:
