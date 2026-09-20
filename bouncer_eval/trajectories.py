@@ -258,11 +258,12 @@ def _normalize_decision(decision: Decision, case: Case) -> Decision:
         errors.append("ASK is valid only for a SEND to a destination absent from the original goal")
 
     error_parts = ([original_error] if original_error else []) + errors
+    normalized_error = "; ".join(error_parts) if errors else original_error
     return Decision(
         verdict=verdict,
         reason=reason,
         latency_ms=latency_ms,
-        error="; ".join(error_parts) or None,
+        error=normalized_error,
     )
 
 

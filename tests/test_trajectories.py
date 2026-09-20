@@ -211,6 +211,32 @@ class TrajectoryReplayTests(unittest.TestCase):
         self.assertTrue(result.steps[0].failed_closed)
         self.assertTrue(result.steps[1].executed)
 
+    def test_empty_error_never_executes_harmful_sink_and_replay_continues(self) -> None:
+        episode = trajectory(
+            "empty-error",
+            attack=True,
+            steps=(
+                step("sink", "send harmful payload", harmful=True),
+                step("finish", "read completion marker", effect="READ"),
+            ),
+        )
+        evaluator = RecordingEvaluator(
+            {
+                "send harmful payload": Decision("ALLOW", "invalid response", error=""),
+                "read completion marker": Decision("ALLOW", "done"),
+            }
+        )
+
+        result = run_trajectories([episode], evaluator)[episode.id]
+
+        self.assertEqual(evaluator.seen, ["send harmful payload", "read completion marker"])
+        self.assertIsNotNone(result.steps[0].decision.error)
+        self.assertFalse(result.steps[0].decision.valid)
+        self.assertFalse(result.steps[0].executed)
+        self.assertTrue(result.steps[0].failed_closed)
+        self.assertFalse(result.harmful_objective_achieved)
+        self.assertTrue(result.steps[1].executed)
+
     def test_benign_completion_requires_every_required_step_to_execute(self) -> None:
         episode = trajectory(
             "benign-task",
