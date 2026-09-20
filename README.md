@@ -91,7 +91,7 @@ The demo uses real MCP clients and servers with mocked, local tool servers. The 
 
 <p align="center">
   <a href="demo/artifacts/bouncer-demo-v2.mp4">
-    <img src="docs/assets/bouncer-demo-preview.gif" alt="Animated Bouncer demo: an AI agent reads a malicious instruction, Bouncer checks the proposed action against the user's goal, and the unauthorized send is denied." width="760">
+    <img src="docs/assets/bouncer-demo-preview.gif" alt="Animated Bouncer demo: an AI agent reads a malicious instruction, Bouncer checks the proposed action against the user's goal, and the unauthorized send is denied." width="680">
   </a>
 </p>
 
