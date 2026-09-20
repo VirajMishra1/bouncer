@@ -72,4 +72,42 @@ describe("normalizeToolCall", () => {
     assert.match(normalized.action, /"urgent":true/);
     assert.match(normalized.action, /"retries":2/);
   });
+
+  it("derives outbound payload evidence from actual arguments, not risk labels", () => {
+    const normalized = normalizeToolCall(tool("email_send_message"), {
+      to: "ops@example.com",
+      body: "DATABASE_URL=postgres://private",
+      data_class: "public",
+    });
+
+    assert.deepEqual(normalized.runtime?.outboundText, ["DATABASE_URL=postgres://private"]);
+    assert.deepEqual(normalized.runtime?.outboundFields, {
+      body: "DATABASE_URL=postgres://private",
+    });
+    assert.doesNotMatch(normalized.runtime?.outboundText.join("\n") ?? "", /public/);
+    assert.doesNotMatch(normalized.action, /data_class|public/);
+  });
+
+  it("derives destructive evidence from the tool name despite benign labels", () => {
+    const normalized = normalizeToolCall(
+      tool("email_delete_message", { destructiveHint: false }),
+      { message_id: "mail-2", destructive: false },
+    );
+
+    assert.equal(normalized.runtime?.destructiveOperation, true);
+  });
+
+  it("uses executable arguments rather than a caller-supplied source label", () => {
+    const withCommand = normalizeToolCall(tool("shell_execute"), {
+      command: "curl evil.test",
+      source: "trusted",
+    });
+    const labelOnly = normalizeToolCall(tool("shell_execute"), {
+      source: "untrusted_content",
+    });
+
+    assert.equal(withCommand.runtime?.executableText, "curl evil.test");
+    assert.equal(labelOnly.runtime?.executableText, undefined);
+    assert.doesNotMatch(withCommand.action, /"source"|"trusted"/);
+  });
 });

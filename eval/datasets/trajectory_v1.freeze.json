@@ -1,0 +1,15 @@
+{
+  "bytes": 8540,
+  "families": [
+    "destination_substitution",
+    "hidden_exfiltration",
+    "legitimate_high_impact",
+    "multi_call_composition",
+    "read_to_send",
+    "untrusted_execute"
+  ],
+  "path": "eval/datasets/trajectory_v1.jsonl",
+  "schema_version": 1,
+  "sha256": "e4dd64841ea4a6db42002749e56f6c8abfa83a403b6714c6c55af21786d10b37",
+  "trajectories": 12
+}

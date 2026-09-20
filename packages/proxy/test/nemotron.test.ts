@@ -115,8 +115,19 @@ describe("parseDecision", () => {
     );
   });
 
+  it("accepts ASK as a strict decision verdict", () => {
+    assert.deepEqual(
+      parseDecision('{"verdict":"ASK","reason":"The destination needs approval."}'),
+      {
+        verdict: "ASK",
+        reason: "The destination needs approval.",
+      },
+    );
+    assert.deepEqual(DECISION_SCHEMA.schema.properties.verdict.enum, ["ALLOW", "BLOCK", "ASK"]);
+  });
+
   for (const [content, message] of [
-    ['{"verdict":"ASK","reason":"Ambiguous."}', "invalid verdict"],
+    ['{"verdict":"REVIEW","reason":"Ambiguous."}', "invalid verdict"],
     ['{"verdict":"ALLOW","reason":""}', "missing reason"],
     ['{"verdict":"BLOCK","reason":"No.","extra":true}', "unexpected fields"],
   ] as const) {
