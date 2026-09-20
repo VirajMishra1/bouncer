@@ -62,7 +62,14 @@ export const buildProxyServer = ({ proxy }: ProxyServerOptions): Server => {
           content: [{ type: "text", text: "bouncer_set_goal requires a non-empty goal string." }],
         };
       }
-      proxy.setGoal(goal);
+      try {
+        proxy.setGoal(goal);
+      } catch (error) {
+        return {
+          isError: true,
+          content: [{ type: "text", text: error instanceof Error ? error.message : String(error) }],
+        };
+      }
       return {
         content: [{ type: "text", text: "Bouncer captured the original user goal." }],
         structuredContent: { captured: true },

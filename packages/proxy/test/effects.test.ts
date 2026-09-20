@@ -80,11 +80,10 @@ describe("normalizeToolCall", () => {
       data_class: "public",
     });
 
-    assert.deepEqual(normalized.runtime?.outboundText, ["DATABASE_URL=postgres://private"]);
-    assert.deepEqual(normalized.runtime?.outboundFields, {
-      body: "DATABASE_URL=postgres://private",
-    });
-    assert.doesNotMatch(normalized.runtime?.outboundText.join("\n") ?? "", /public/);
+    // Every string is scanned for secrets (labels and destination keys included, so nothing can hide there),
+    // but a label is never evidence: it cannot clear a finding and never reaches the judge's action text.
+    assert.ok(normalized.runtime?.outboundText.includes("DATABASE_URL=postgres://private"));
+    assert.equal(normalized.runtime?.outboundFields.body, "DATABASE_URL=postgres://private");
     assert.doesNotMatch(normalized.action, /data_class|public/);
   });
 

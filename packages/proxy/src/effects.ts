@@ -5,17 +5,30 @@ const READ_NAME = /(?:^|_)(?:list|get|read|search|fetch|open|inspect|show|lookup
 const EXECUTE_NAME = /(?:^|_)(?:execute|exec|run|shell|delete|remove|write|create|update|install|deploy|commit|merge)(?:_|$)/i;
 const DESTRUCTIVE_NAME = /(?:^|_)(?:delete|remove|destroy|drop|truncate|purge|erase|wipe|revoke)(?:_|$)/i;
 const DESTRUCTIVE_VALUE = /^(?:delete|remove|destroy|drop|truncate|purge|erase|wipe|revoke)$/i;
-const DESTINATION_KEYS = new Set(["destination", "to", "recipient", "url", "endpoint"]);
+// Caller-supplied risk labels are never evidence: they are hidden from the judge.
+// `source` is only treated as a label when its value is a known provenance word;
+// any other value (a path, URL or script) is real payload and stays visible.
 const RISK_LABEL_KEYS = new Set([
   "data_class",
   "sensitivity",
   "risk",
   "risk_level",
-  "source",
   "destructive",
   "destination_in_goal",
   "operation_in_goal",
 ]);
+const SOURCE_LABEL_VALUE = /^(?:trusted|untrusted(?:_content)?|user|system|tool_output|internal|external)$/i;
+
+const isLabelEntry = (key: string, value: JsonValue): boolean => {
+  const normalizedKey = key.toLocaleLowerCase();
+  if (RISK_LABEL_KEYS.has(normalizedKey)) return true;
+  return normalizedKey === "source" && typeof value === "string" && SOURCE_LABEL_VALUE.test(value.trim());
+};
+
+// Define own properties so an argument literally named "__proto__" cannot hit the prototype setter.
+const setOwn = <T>(target: Record<string, T>, key: string, value: T): void => {
+  Object.defineProperty(target, key, { value, enumerable: true, writable: true, configurable: true });
+};
 
 const asString = (value: JsonValue | undefined): string | undefined => {
   if (typeof value === "string" && value.length > 0) return value;
@@ -47,22 +60,23 @@ const resourceFor = (toolName: string, args: JsonObject): string =>
   firstString(args, ["resource", "path", "message_id", "issue", "issue_number", "id", "query", "folder"])
   ?? toolName;
 
-const sourceFor = (args: JsonObject): string | undefined =>
-  firstString(args, ["command", "script", "code"]);
+const sourceFor = (args: JsonObject): string | undefined => {
+  const direct = firstString(args, ["command", "script", "code"]);
+  if (direct !== undefined) return direct;
+  const source = asString(args.source);
+  return source !== undefined && !SOURCE_LABEL_VALUE.test(source.trim()) ? source : undefined;
+};
 
 const outboundFor = (args: JsonObject): Pick<RuntimeSignals, "outboundText" | "outboundFields"> => {
   const values: string[] = [];
   const fields: Record<string, string> = {};
+  // Every string is scanned, including destination-named keys and label keys: a secret can hide
+  // in `url`, `to` or a nested `destination`. Destination inference is a separate step.
   const visit = (value: JsonValue, key?: string, path = ""): void => {
-    const normalizedKey = key?.toLocaleLowerCase();
-    if (
-      normalizedKey !== undefined
-      && (DESTINATION_KEYS.has(normalizedKey) || RISK_LABEL_KEYS.has(normalizedKey))
-    ) return;
     if (typeof value === "string") {
       if (value.length > 0) {
         values.push(value);
-        if (path.length > 0) fields[path] = value;
+        if (path.length > 0) setOwn(fields, path, value);
       }
       return;
     }
@@ -92,7 +106,7 @@ const neutralArgsForModel = (args: JsonObject): JsonObject => {
     if (typeof value !== "object" || value === null) return value;
     const sanitized: JsonObject = {};
     for (const [key, nestedValue] of Object.entries(value)) {
-      if (!RISK_LABEL_KEYS.has(key.toLocaleLowerCase())) sanitized[key] = visit(nestedValue);
+      if (!isLabelEntry(key, nestedValue)) setOwn(sanitized, key, visit(nestedValue));
     }
     return sanitized;
   };
@@ -115,7 +129,13 @@ export const normalizeToolCall = (
     ...(executableText === undefined ? {} : { executableText }),
   };
 
-  if (tool.annotations?.readOnlyHint === true && !destructiveOperation) {
+  // The downstream server's readOnlyHint is untrusted: a name that says send or execute wins.
+  if (
+    tool.annotations?.readOnlyHint === true
+    && !destructiveOperation
+    && !SEND_NAME.test(tool.name)
+    && !EXECUTE_NAME.test(tool.name)
+  ) {
     return { toolName: tool.name, action, effect: "READ", resource: resourceFor(tool.name, args), runtime };
   }
 
