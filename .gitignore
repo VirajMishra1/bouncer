@@ -26,3 +26,6 @@ eval/results/scratch/
 
 # demo video build intermediates (hundreds of MB of frames)
 demo/video/build/
+
+# intermediate frames for the README explainer (rebuilt by docs/assets/capture_frames.mjs)
+docs/assets/frames/

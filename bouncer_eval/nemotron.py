@@ -59,6 +59,20 @@ def parse_decision(content: str) -> Decision:
     return Decision(verdict, reason.strip())
 
 
+RATE_LIMIT_RETRIES = 6
+
+
+def _retry_after(exc: HTTPError, nth: int) -> float:
+    """Seconds to wait after a 429: the server's Retry-After if it sent one, else 5, 10, 20, 40, 60 s."""
+    try:
+        header = exc.headers.get("Retry-After") if exc.headers else None
+        if header:
+            return min(90.0, max(1.0, float(header)))
+    except (TypeError, ValueError, AttributeError):
+        pass
+    return float(min(60, 5 * 2 ** (nth - 1)))
+
+
 def _is_malformed(error: str) -> bool:
     """Syntax-level garbage only (unparseable JSON or not an object). A wrong verdict value is not retried."""
     return error.startswith("invalid JSON response") or error == "response must be a JSON object"
@@ -97,7 +111,12 @@ class NemotronEvaluator:
             "Content-Type": "application/json",
             "Accept": "application/json",
         }
-        for attempt in range(1, self._max_attempts + 1):
+        rate_limited = 0
+        attempt = 0
+        while True:
+            attempt += 1
+            if attempt > self._max_attempts + rate_limited:
+                break
             try:
                 response = self._transport(ENDPOINT, headers, body)
                 content = response["choices"][0]["message"]["content"]
@@ -118,10 +137,16 @@ class NemotronEvaluator:
                     exc.close()
                 except Exception:  # synthetic/fp-less HTTPError.close() can raise
                     pass
-                if exc.code not in {408, 429, 500, 502, 503, 504} or attempt == self._max_attempts:
+                if exc.code == 429 and rate_limited < RATE_LIMIT_RETRIES:
+                    # Rate limited: this is congestion, not a verdict. Honour Retry-After, back off, and try again
+                    # rather than failing a legitimate action closed. The extra tries do not eat the normal budget.
+                    rate_limited += 1
+                    self._sleep(_retry_after(exc, rate_limited))
+                    continue
+                if exc.code not in {408, 500, 502, 503, 504} or attempt >= self._max_attempts + rate_limited:
                     return self._error_decision(started, f"HTTP {exc.code}")
             except URLError as exc:
-                if attempt == self._max_attempts:
+                if attempt >= self._max_attempts + rate_limited:
                     return self._error_decision(started, f"network error: {exc.reason}")
             except (KeyError, IndexError, TypeError, ValueError) as exc:
                 return self._error_decision(started, f"invalid API response: {exc}")

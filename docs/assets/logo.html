@@ -1,0 +1,54 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+  html,body{margin:0;background:transparent}
+  #banner{width:1600px;height:420px;position:relative;background:linear-gradient(100deg,#070a1f 0%,#1a1040 60%,#2a1450 100%);overflow:hidden;font-family:"Avenir Next","Trebuchet MS","Segoe UI",sans-serif}
+  #banner::before{content:"";position:absolute;inset:0;background:radial-gradient(600px 300px at 78% 40%,rgba(255,63,180,.28),transparent 70%),radial-gradient(500px 260px at 22% 60%,rgba(94,231,255,.16),transparent 70%)}
+  .rain{position:absolute;inset:0;background:repeating-linear-gradient(105deg,transparent 0 46px,rgba(190,212,255,.07) 46px 47px)}
+  .mark{position:absolute;left:70px;top:50px;width:320px;height:320px}
+  .word{position:absolute;left:440px;top:78px;color:#ffe3f7;font-weight:900;font-style:italic;font-size:170px;letter-spacing:6px;line-height:1;
+        text-shadow:0 0 12px #ff3fb4,0 0 38px #ff3fb4,0 0 80px rgba(255,63,180,.55);-webkit-text-stroke:2px #ff3fb4}
+  .tag{position:absolute;left:446px;top:270px;color:#5ee7ff;font-size:38px;letter-spacing:5px;font-weight:700;text-shadow:0 0 14px rgba(94,231,255,.6)}
+  .sub{position:absolute;left:446px;top:330px;color:#b9c3f2;font-size:28px;letter-spacing:2px}
+  .sub b{color:#76e6a4}
+  #icon{width:512px;height:512px;position:relative;background:radial-gradient(circle at 50% 38%,#2a1450,#070a1f 75%);overflow:hidden}
+</style></head><body>
+<svg width="0" height="0" style="position:absolute"><defs>
+  <linearGradient id="rim" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ff3fb4"/><stop offset="1" stop-color="#5ee7ff"/></linearGradient>
+  <linearGradient id="lens" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#2a3470"/><stop offset=".5" stop-color="#06081a"/><stop offset="1" stop-color="#151b45"/></linearGradient>
+  <symbol id="bouncer" viewBox="0 0 320 320">
+    <circle cx="160" cy="160" r="150" fill="#0b1030" stroke="url(#rim)" stroke-width="8"/>
+    <circle cx="160" cy="160" r="138" fill="none" stroke="#5ee7ff" stroke-width="1.5" opacity=".5"/>
+    <!-- shoulders / suit -->
+    <path d="M40 268 Q48 214 104 202 L216 202 Q272 214 280 268 A150 150 0 0 1 40 268Z" fill="#151a38" stroke="#05060f" stroke-width="5"/>
+    <path d="M168 202 L216 202 Q272 214 280 268 A150 150 0 0 1 200 300 L168 300Z" fill="#0b0e26"/>
+    <polygon points="132,202 188,202 160,262" fill="#f0f0f5" stroke="#05060f" stroke-width="3"/>
+    <polygon points="150,222 170,222 174,262 160,282 146,262" fill="#c92a45" stroke="#05060f" stroke-width="3"/>
+    <path d="M132 202 L98 214 L134 268 L160 262Z" fill="#0e1230" stroke="#05060f" stroke-width="3"/>
+    <path d="M188 202 L222 214 L186 268 L160 262Z" fill="#0b0e26" stroke="#05060f" stroke-width="3"/>
+    <!-- neck + head -->
+    <rect x="140" y="176" width="40" height="30" fill="#c4886a"/>
+    <ellipse cx="160" cy="132" rx="52" ry="58" fill="#d19677" stroke="#05060f" stroke-width="5"/>
+    <path d="M160 74 Q212 76 212 130 Q208 160 178 186 Q198 140 160 74Z" fill="#a8684d" opacity=".55"/>
+    <path d="M108 122 Q104 68 160 66 Q216 68 212 122 Q188 96 160 98 Q132 96 108 122Z" fill="#141018"/>
+    <path d="M118 158 Q160 214 202 158 Q200 200 160 204 Q120 200 118 158Z" fill="#1d1219" opacity=".7"/>
+    <!-- sunglasses -->
+    <g stroke="#05060f" stroke-width="4">
+      <rect x="102" y="112" width="52" height="34" rx="12" fill="url(#lens)"/>
+      <rect x="166" y="112" width="52" height="34" rx="12" fill="url(#lens)"/>
+    </g>
+    <line x1="154" y1="122" x2="166" y2="122" stroke="#05060f" stroke-width="5"/>
+    <path d="M112 118 l14 0 l-10 24 l-14 0z M132 118 l5 0 l-10 24 l-5 0z" fill="#fff" opacity=".85"/>
+    <path d="M176 118 l14 0 l-10 24 l-14 0z" fill="#fff" opacity=".45"/>
+    <path d="M140 172 q20 9 40 0" stroke="#5a2f2a" stroke-width="5" fill="none" stroke-linecap="round"/>
+    <path d="M212 126 q22 10 14 40" stroke="#dfe6ff" stroke-width="4" fill="none"/>
+    <circle cx="214" cy="132" r="7" fill="#5ee7ff"/>
+  </symbol>
+</defs></svg>
+
+<div id="banner"><div class="rain"></div>
+  <svg class="mark"><use href="#bouncer"/></svg>
+  <div class="word">BOUNCER</div>
+  <div class="tag">THE INTENT FIREWALL FOR AI AGENTS</div>
+  <div class="sub">Every action gets checked at the door · powered by <b>NVIDIA Nemotron</b></div>
+</div>
+<div id="icon"><svg width="512" height="512" viewBox="0 0 320 320" style="position:absolute;inset:0"><use href="#bouncer"/></svg></div>
+</body></html>

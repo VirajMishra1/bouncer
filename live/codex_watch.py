@@ -12,9 +12,13 @@ BOUNCER_CODEX_CWD (colon-separated) or one path per line in ~/.bouncer-live/code
 import json
 import os
 import re
+import sys
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from context import CodexContext  # noqa: E402
 
 REPO_ROOT = str(Path(__file__).resolve().parent.parent)
 CODEX_HOME = Path(os.environ.get("CODEX_HOME", Path.home() / ".codex"))
@@ -104,6 +108,7 @@ def to_tool_calls(payload):
 class Tail:
     def __init__(self, path, sid, offset):
         self.path, self.sid, self.offset, self.buf = path, sid, offset, b""
+        self.ctx = CodexContext()      # what the agent said/saw so far, attached to each PreToolUse as session_context
 
 
 def run(handle, poll=1.0, log=print):
@@ -152,13 +157,16 @@ def run(handle, poll=1.0, log=print):
                         continue
                     p = o.get("payload") if isinstance(o.get("payload"), dict) else {}
                     base = {"session_id": t.sid, "agent": "codex"}
+                    t.ctx.observe(o)                # user prompts, commentary notes and tool outputs
                     if o.get("type") == "event_msg" and p.get("type") == "item_completed" and (p.get("item") or {}).get("type") == "UserMessage":
                         text = user_text(p)
                         if text:
                             handle({**base, "hook_event_name": "UserPromptSubmit", "prompt": text})
                     elif o.get("type") == "response_item":
                         for tool, inp, cid in to_tool_calls(p):
-                            handle({**base, "hook_event_name": "PreToolUse", "tool_name": tool, "tool_input": inp, "tool_use_id": cid})
+                            handle({**base, "hook_event_name": "PreToolUse", "tool_name": tool, "tool_input": inp, "tool_use_id": cid,
+                                    "session_context": t.ctx.snapshot()})
+                            t.ctx.add_action(tool, inp, cid)     # after sending, so a call is never its own prior action
                     elif o.get("type") == "event_msg" and p.get("type") == "task_complete":
                         handle({**base, "hook_event_name": "Stop", "last_message": p.get("last_agent_message") or ""})
         except Exception as e:      # never die: this runs inside the server
