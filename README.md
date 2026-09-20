@@ -2,7 +2,7 @@
   <img src="docs/assets/logo.png" alt="Bouncer: the intent firewall for AI agents. A bouncer with sunglasses guards the door. Powered by NVIDIA Nemotron." width="860">
 </p>
 
-### The intent firewall for AI agents — Nemotron decides whether each tool call is what the user actually asked for.
+### Bouncer is an intent firewall for AI agents — Nemotron checks whether every tool call matches the user's request before it runs.
 
 > **Prompt filters ask whether content looks malicious. Bouncer asks whether the concrete side effect is authorized by the user's goal.**
 
