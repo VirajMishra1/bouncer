@@ -27,7 +27,11 @@ class Decision:
 
     @property
     def valid(self) -> bool:
-        return self.error is None and self.verdict in {"ALLOW", "BLOCK", "ASK"}
+        return (
+            self.error is None
+            and isinstance(self.verdict, str)
+            and self.verdict in {"ALLOW", "BLOCK", "ASK"}
+        )
 
 
 def _freeze_value(value: Any) -> Any:
