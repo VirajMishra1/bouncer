@@ -52,7 +52,10 @@ def main() -> int:
     p.add_argument("--seed", type=Path, help="reuse valid decisions from a full replay output")
     p.add_argument("--min-interval", type=float, default=6.5)
     args = p.parse_args()
-    sample = select_public_v2_sample(load_trajectories(args.source / "gpt-4o-2024-05-13"))
+    sample = sorted(
+        select_public_v2_sample(load_trajectories(args.source / "gpt-4o-2024-05-13")),
+        key=lambda trajectory: (not trajectory.is_attack, trajectory.suite, trajectory.id),
+    )
     prior = {}
     if args.output.exists():
         prior = {(r["trajectory_id"], r["call_index"]): r for r in json.loads(args.output.read_text()).get("records", []) if r["nemotron"]["error"] is None}
