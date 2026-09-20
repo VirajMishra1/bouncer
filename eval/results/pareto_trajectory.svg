@@ -1,14 +1,14 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="540" height="540" viewBox="0 0 540 540" font-family="system-ui,sans-serif" role="img" aria-labelledby="pareto-title pareto-desc">
-<title id="pareto-title">Bouncer: safety vs. usability (per-call diagnostic)</title>
-<desc id="pareto-desc">deterministic: 83% benign, 100% attacks stopped; nemotron-super: 88% benign, 100% attacks stopped</desc>
+<title id="pareto-title">Bouncer: safety vs. usability (end-to-end)</title>
+<desc id="pareto-desc">deterministic: 100% benign, 100% attacks stopped; no-defense: 100% benign, 0% attacks stopped; text-rules: 100% benign, 83% attacks stopped</desc>
 <rect width="540" height="540" fill="#ffffff"/>
 <rect x="270" y="70" width="200" height="200" fill="#12b88618"/>
 <text x="464" y="86" text-anchor="end" font-size="11" fill="#12b886">secure &amp; usable</text>
 <line x1="70" y1="470" x2="470" y2="470" stroke="#343a40" stroke-width="1.5"/>
 <line x1="70" y1="70" x2="70" y2="470" stroke="#343a40" stroke-width="1.5"/>
-<text x="270" y="516" text-anchor="middle" font-size="13" fill="#343a40">Benign task completion →</text>
-<text x="22" y="270" text-anchor="middle" font-size="13" fill="#343a40" transform="rotate(-90 22 270)">Attacks blocked →</text>
-<text x="270" y="26" text-anchor="middle" font-size="15" font-weight="600" fill="#212529">Bouncer: safety vs. usability (per-call diagnostic)</text>
+<text x="270" y="516" text-anchor="middle" font-size="13" fill="#343a40">Benign tasks completed →</text>
+<text x="22" y="270" text-anchor="middle" font-size="13" fill="#343a40" transform="rotate(-90 22 270)">Attacker objectives prevented →</text>
+<text x="270" y="26" text-anchor="middle" font-size="15" font-weight="600" fill="#212529">Bouncer: safety vs. usability (end-to-end)</text>
 <line x1="70" y1="70" x2="70" y2="470" stroke="#e9ecef"/>
 <line x1="70" y1="470" x2="470" y2="470" stroke="#e9ecef"/>
 <text x="70" y="488" text-anchor="middle" font-size="10" fill="#868e96">0%</text>
@@ -21,8 +21,10 @@
 <line x1="70" y1="70" x2="470" y2="70" stroke="#e9ecef"/>
 <text x="470" y="488" text-anchor="middle" font-size="10" fill="#868e96">100%</text>
 <text x="62" y="74" text-anchor="end" font-size="10" fill="#868e96">100%</text>
-<circle cx="403.3" cy="70.0" r="6" fill="#868e96" fill-opacity="0.85" stroke="#fff" stroke-width="1.5"/>
-<text x="403.3" y="58.0" text-anchor="middle" font-size="11" font-weight="400" fill="#868e96">deterministic</text>
-<circle cx="420.0" cy="70.0" r="8" fill="#12b886" fill-opacity="0.85" stroke="#fff" stroke-width="1.5"/>
-<text x="420.0" y="58.0" text-anchor="middle" font-size="11" font-weight="700" fill="#12b886">nemotron-super</text>
+<circle cx="470.0" cy="70.0" r="6" fill="#868e96" fill-opacity="0.85" stroke="#fff" stroke-width="1.5"/>
+<text x="470.0" y="58.0" text-anchor="middle" font-size="11" font-weight="400" fill="#868e96">deterministic</text>
+<circle cx="470.0" cy="470.0" r="6" fill="#868e96" fill-opacity="0.85" stroke="#fff" stroke-width="1.5"/>
+<text x="470.0" y="458.0" text-anchor="middle" font-size="11" font-weight="400" fill="#868e96">no-defense</text>
+<circle cx="470.0" cy="136.7" r="6" fill="#868e96" fill-opacity="0.85" stroke="#fff" stroke-width="1.5"/>
+<text x="470.0" y="124.7" text-anchor="middle" font-size="11" font-weight="400" fill="#868e96">text-rules</text>
 </svg>

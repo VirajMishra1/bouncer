@@ -78,6 +78,8 @@ export interface NemotronEvaluatorOptions {
   fetcher?: Fetcher;
   sleep?: Sleep;
   maxAttempts?: number;
+  /** Per-request timeout; a hung connection must fail closed, not stall the tool call. */
+  timeoutMs?: number;
 }
 
 export class NemotronEvaluator {
@@ -87,6 +89,7 @@ export class NemotronEvaluator {
   private readonly fetcher: Fetcher;
   private readonly sleep: Sleep;
   private readonly maxAttempts: number;
+  private readonly timeoutMs: number;
 
   constructor(options: NemotronEvaluatorOptions) {
     if (options.apiKey.trim().length === 0) throw new Error("NVIDIA_API_KEY is required");
@@ -96,6 +99,7 @@ export class NemotronEvaluator {
     this.fetcher = options.fetcher ?? globalThis.fetch;
     this.sleep = options.sleep ?? ((milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)));
     this.maxAttempts = options.maxAttempts ?? 3;
+    this.timeoutMs = options.timeoutMs ?? 60_000;
   }
 
   async evaluate(input: DecisionInput): Promise<Decision> {
@@ -112,6 +116,7 @@ export class NemotronEvaluator {
             Accept: "application/json",
           },
           body: JSON.stringify(body),
+          signal: AbortSignal.timeout(this.timeoutMs),
         });
 
         if (!response.ok) {

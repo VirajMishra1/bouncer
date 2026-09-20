@@ -6,13 +6,16 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from bouncer_eval.models import Decision, Trajectory, TrajectoryOutcome, TrajectoryStep
+from bouncer_eval.models import Case, Decision, Trajectory, TrajectoryOutcome, TrajectoryStep
 from bouncer_eval.trajectories import (
     FROZEN_FAMILIES,
+    _paired_bootstrap,
+    _percentile,
     compare_trajectory_outcomes,
     load_trajectories,
     run_trajectories,
     summarize_trajectories,
+    validate_trajectories,
 )
 
 
@@ -390,12 +393,52 @@ class TrajectoryMetricTests(unittest.TestCase):
         samples = sorted(
             sum(deltas[rng.randrange(4)] for _ in range(4)) / 4 for _ in range(250)
         )
-        expected_ci = [samples[int(0.025 * 250)], samples[min(249, int(0.975 * 250))]]
+        expected_ci = [_percentile(samples, 0.025), _percentile(samples, 0.975)]
         self.assertEqual(comparison["difference_ci"], expected_ci)
         self.assertEqual(
             comparison,
             compare_trajectory_outcomes(episodes, candidate, baseline, seed=17, iterations=250),
         )
+
+
+class PercentileTests(unittest.TestCase):
+    def test_matches_the_standard_definition_on_a_known_ramp(self) -> None:
+        ramp = [float(value) for value in range(101)]      # 0..100, so the q-th percentile is exactly 100*q
+        self.assertAlmostEqual(_percentile(ramp, 0.025), 2.5)
+        self.assertAlmostEqual(_percentile(ramp, 0.975), 97.5)
+        self.assertEqual(_percentile(ramp, 0.0), 0.0)
+        self.assertEqual(_percentile(ramp, 1.0), 100.0)
+
+    def test_single_value_and_symmetry(self) -> None:
+        self.assertEqual(_percentile([0.4], 0.975), 0.4)
+        low, high = _paired_bootstrap([1, -1] * 10, seed=3, iterations=2000)
+        self.assertAlmostEqual(low, -high, places=6)
+
+
+class RetryAndDatasetShapeTests(unittest.TestCase):
+    class BlocksFirstAttempt:
+        def evaluate(self, case: Case) -> Decision:
+            return Decision("BLOCK" if case.id.endswith(":first") else "ALLOW", "test", 0.0)
+
+    def test_a_blocked_required_step_that_is_retried_successfully_still_completes(self) -> None:
+        episode = trajectory(
+            "benign-retry",
+            attack=False,
+            steps=(
+                step("first", "do the work", required=True),
+                step("second", "do the work again", required=True, retry_of="first"),
+            ),
+        )
+        self.assertTrue(run_trajectories([episode], self.BlocksFirstAttempt())["benign-retry"].benign_completed)
+
+    def test_a_required_step_with_no_successful_attempt_is_incomplete(self) -> None:
+        episode = trajectory("benign-blocked", attack=False, steps=(step("first", "do the work", required=True),))
+        self.assertFalse(run_trajectories([episode], self.BlocksFirstAttempt())["benign-blocked"].benign_completed)
+
+    def test_dataset_must_contain_both_attacks_and_benign_episodes(self) -> None:
+        only_benign = [trajectory("b", attack=False, steps=(step("s", "x", required=True),))]
+        with self.assertRaisesRegex(ValueError, "at least one attack"):
+            validate_trajectories(only_benign, required_families=frozenset({"test_family"}))
 
 
 if __name__ == "__main__":

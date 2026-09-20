@@ -12,7 +12,8 @@ import type {
   Verdict,
 } from "./types.js";
 
-const SECRET_VALUE = /(?:^|[\s,{])(?:[A-Z0-9_-]*(?:API[_-]?KEY|TOKEN|SECRET|PASSWORD|PASSWD|PRIVATE[_-]?KEY|CREDENTIAL)[A-Z0-9_-]*)\s*[:=]\s*[^\s,;}]+|-----BEGIN [^-]*PRIVATE KEY-----|(?:postgres|mysql|mongodb(?:\+srv)?):\/\/[^\s:@]+:[^\s@]+@/i;
+// Named credentials (bare, quoted JSON, or inside a URL query) plus well-known token shapes.
+const SECRET_VALUE = /(?:^|[\s,{"'?&;(])(?:[A-Z0-9_-]*(?:API[_-]?KEY|TOKEN|SECRET|PASSWORD|PASSWD|PRIVATE[_-]?KEY|CREDENTIAL)[A-Z0-9_-]*)["']?\s*[:=]\s*["']?[^\s,;}"']+|-----BEGIN [^-]*PRIVATE KEY-----|(?:postgres|mysql|mongodb(?:\+srv)?):\/\/[^\s:@]+:[^\s@]+@|\b(?:AKIA[0-9A-Z]{16}|sk-[A-Za-z0-9_-]{16,}|gh[pousr]_[A-Za-z0-9]{20,}|nvapi-[A-Za-z0-9_-]{10,}|xox[baprs]-[A-Za-z0-9-]{10,}|eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,})/i;
 const SECRET_FIELD = /(?:^|[._-])(?:api[_-]?key|token|secret|password|passwd|private[_-]?key|credential)(?:$|[._-])/i;
 
 export interface BouncerProxyOptions {
@@ -21,6 +22,8 @@ export interface BouncerProxyOptions {
   audit: AuditSink;
   now?: () => string;
   contextLimit?: number;
+  /** Let the goal be replaced after it is first set. Off by default: a hijacked agent must not rewrite it. */
+  allowGoalChange?: boolean;
 }
 
 export class BouncerProxy {
@@ -29,6 +32,7 @@ export class BouncerProxy {
   private readonly audit: AuditSink;
   private readonly now: () => string;
   private readonly contextLimit: number;
+  private readonly allowGoalChange: boolean;
   private goal: string | undefined;
   private tools: ToolDefinition[] | undefined;
   private context: string[] = [];
@@ -39,11 +43,15 @@ export class BouncerProxy {
     this.audit = options.audit;
     this.now = options.now ?? (() => new Date().toISOString());
     this.contextLimit = options.contextLimit ?? 2;
+    this.allowGoalChange = options.allowGoalChange ?? false;
   }
 
   setGoal(goal: string): void {
     const trimmed = goal.trim();
     if (trimmed.length === 0) throw new Error("Original user goal cannot be empty");
+    if (this.goal !== undefined && trimmed !== this.goal && !this.allowGoalChange) {
+      throw new Error("The original user goal is already set for this session and cannot be replaced.");
+    }
     this.goal = trimmed;
     this.context = [];
   }
@@ -56,7 +64,13 @@ export class BouncerProxy {
   async callTool(name: string, args: JsonObject = {}): Promise<ToolCallResult> {
     const tool = await this.findTool(name);
     if (tool === undefined) {
-      return this.blockedResult(name, "EXECUTE", `Unknown downstream tool: ${name}`);
+      const unknown: Decision = { verdict: "BLOCK", reason: `Unknown downstream tool: ${name}`, latencyMs: 0 };
+      try {
+        await this.writeAudit({ toolName: name, action: `Call ${name}`, effect: "EXECUTE" }, unknown, false);
+      } catch {
+        // Blocking does not depend on the log; the caller still gets a refusal.
+      }
+      return this.blockedResult(name, "EXECUTE", unknown.reason);
     }
     const normalized = normalizeToolCall(tool, args);
 
@@ -162,10 +176,11 @@ export class BouncerProxy {
     }
     const executableText = action.runtime?.executableText;
     if (action.effect === "EXECUTE" && executableText !== undefined) {
-      const normalizedExecutable = executableText.trim().toLocaleLowerCase();
+      const collapse = (text: string): string => text.replace(/\s+/g, " ").trim().toLocaleLowerCase();
+      const normalizedExecutable = collapse(executableText);
       if (
         normalizedExecutable.length >= 4
-        && this.context.some((entry) => entry.toLocaleLowerCase().includes(normalizedExecutable))
+        && this.context.some((entry) => collapse(entry).includes(normalizedExecutable))
       ) return "Bouncer blocked executable text derived from prior untrusted tool output.";
     }
     if (action.effect === "SEND" && action.destination === undefined) {

@@ -298,13 +298,13 @@ Build **nothing else** until this passes. It answers all three open risks.
 > **Note:** these `P#` are time PHASES (a sequence). They are a different axis from the parallel **Teammate lanes** in [§15](#15-team-split--3-teammates). Roughly: Teammate 1 drives P1(eval parts)+P2, Teammate 2 drives P3, Teammate 3 drives P4–P6. Status markers: ✅ done · 🟡 partial · ⬜ not started · ✂️ cut.
 
 - **P0 — Hour-One Gate (0–1h): ✅ DONE.** Go/no-go passed (GO, survives anti-leakage).
-- **P1 — Core engine (1–5h): 🟡 ~70%.** ✅ NIM client (Super; Lightning flaky), strict-JSON schema + validation, deterministic rules baseline. ⬜ TODO: compose deterministic invariants *with* Nemotron into one hybrid enforcement path, runtime effect normalization, the **ASK rule** (schema still binary ALLOW/BLOCK), iterate the Super prompt (fix the 3 self-consistency INVALIDs).
-- **P2 — Eval harness (5–11h): 🟡 ~60%.** ✅ `bouncer_eval.cli` (=run_eval), baselines, metrics table, `failures.md`, Pareto chart (`eval/plot_pareto.py`). ⬜ TODO: ablations (reasoning on/off, tiering), **end-to-end trajectory scoring** (attacker-objective-achieved), family splits + freeze + bootstrap CIs. **This is the winning artifact.**
-- **P3 — MCP proxy + counterfactual demo (11–19h): ⬜ handed to Codex.** TS interceptor against mocked local tool servers; the email scenario (off vs on, task still completes); record the clip.
-- **P4 — Dashboard + polish (19–26h):** results viz, decision trace, big ALLOW/BLOCK/ASK states.
+- **P1 — Core engine (1–5h): ✅ ~90%.** ✅ NIM client (Super; Lightning flaky), strict-JSON schema + validation, deterministic rules baseline, hybrid enforcement (`bouncer_eval/bouncer.py`, `packages/proxy`), runtime effect normalization, the ASK rule (SEND to an unnamed destination; never forwarded), review-driven hardening. ⬜ TODO: iterate the Super prompt (the 3 self-consistency INVALIDs). Details: [`docs/status/masterplan-audit.md`](docs/status/masterplan-audit.md).
+- **P2 — Eval harness (5–11h): 🟡 ~70%.** ✅ `bouncer_eval.cli`, baselines, metrics, `failures.md`, Pareto charts, end-to-end trajectory scoring (12 episodes, frozen; deterministic baseline only and it saturates), one-command `python3 -m eval.run_eval`, dashboard. ⬜ TODO: hybrid/Nemotron trajectory run (needs key), a text-only rules baseline (the current one reads curator labels), no-defense baseline, post-freeze red-team set, ablations, NeMo Guardrails baseline, AgentDojo. **This is the winning artifact.**
+- **P3 — MCP proxy + counterfactual demo (11–19h): ✅ DONE.** TS interceptor against mocked email + GitHub servers, offline counterfactual (Bouncer off vs on, task still completes), recorded clip.
+- **P4 — Dashboard + polish (19–26h): ✅ DONE.** Static evidence dashboard (`dashboard/`) and **Bouncer Live** (`live/`): the animated door-checking view that opens when you prompt Claude Code (project hooks) or Codex (session watcher), watch-only and local by default.
 - **P4.5 — Hour-24 checkpoint:** core working? Only then admit stretch (tiering headline, Brev on-device, ElevenLabs, post-freeze red-team expansion).
-- **P5 — Story (26–40h):** deck, 3-min script, README, diagram, the category one-liner.
-- **P6 — Buffer + submit (40–48h):** re-run eval clean, freeze results, record final video, submit to Nemotron + Most Fundable.
+- **P5 — Story (26–40h): 🟡.** ✅ README, 3-min script, architecture diagram, category one-liner. ⬜ deck.
+- **P6 — Buffer + submit (40–48h): ⬜.** Re-run eval clean, freeze results, record final video, make the repo public, submit to Nemotron + Most Fundable.
 
 ---
 
@@ -360,11 +360,11 @@ Three parallel lanes. Everything builds against **one locked contract**: the dec
 ---
 
 ## 16. Submission Checklist
-- [ ] Public repo: proxy + core + eval + demo, clean README.
-- [ ] `run_eval.py` reproducible one-command; `results/` committed (tables + `pareto.png` + `failures.md` + raw counts/CIs).
-- [ ] Email counterfactual demo + recorded off-vs-on clip; GitHub as second example.
-- [ ] 3-min pitch: problem → live counterfactual → the chart → "intent firewall / beyond the chatbot / beat the baseline (and NVIDIA's own tool)".
-- [ ] Architecture diagram + the category one-liner.
+- [ ] Public repo: proxy + eval + demo + live view, clean README. (Repo is currently private.)
+- [x] `run_eval.py` reproducible one-command (`python3 -m eval.run_eval`); `results/` committed (tables + `pareto.svg` + `failures.md` + raw counts). CIs need a second trajectory system.
+- [x] Email counterfactual demo + recorded off-vs-on clip; GitHub as second example (mocked).
+- [x] 3-min pitch script written (rehearsal pending): problem → live counterfactual → the chart → "intent firewall / beyond the chatbot / beat the baseline (and NVIDIA's own tool)".
+- [x] Architecture diagram + the category one-liner.
 - [ ] Submit to **Nemotron "Beyond the Chatbot"** + **Most Fundable**.
 - [ ] (Stretch) ElevenLabs alert; Brev on-device finale.
 

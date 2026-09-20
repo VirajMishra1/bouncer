@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "bouncer-email": {
+      "command": "node",
+      "args": [
+        "/ABSOLUTE/PATH/TO/bouncer/packages/proxy/dist/cli.js"
+      ],
+      "env": {
+        "NVIDIA_API_KEY": "${NVIDIA_API_KEY}",
+        "BOUNCER_AUDIT_LOG": "/ABSOLUTE/PATH/TO/bouncer-audit.jsonl",
+        "BOUNCER_DOWNSTREAMS": "[{\"name\": \"email\", \"command\": \"node\", \"args\": [\"--import\", \"tsx\", \"../../demo/email-server.ts\"], \"cwd\": \"/ABSOLUTE/PATH/TO/bouncer/packages/proxy\"}]"
+      }
+    }
+  }
+}
