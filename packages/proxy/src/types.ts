@@ -3,7 +3,7 @@ export type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue
 export type JsonObject = { [key: string]: JsonValue };
 
 export type Effect = "READ" | "SEND" | "EXECUTE";
-export type Verdict = "ALLOW" | "BLOCK";
+export type Verdict = "ALLOW" | "BLOCK" | "ASK";
 
 export interface ToolAnnotations {
   readOnlyHint?: boolean;
@@ -39,6 +39,14 @@ export interface NormalizedAction {
   destination?: string;
   resource?: string;
   source?: string;
+  runtime?: RuntimeSignals;
+}
+
+export interface RuntimeSignals {
+  outboundText: string[];
+  outboundFields: { [path: string]: string };
+  destructiveOperation: boolean;
+  executableText?: string;
 }
 
 export interface DecisionInput extends NormalizedAction {

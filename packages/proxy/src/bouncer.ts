@@ -12,6 +12,9 @@ import type {
   Verdict,
 } from "./types.js";
 
+const SECRET_VALUE = /(?:^|[\s,{])(?:[A-Z0-9_-]*(?:API[_-]?KEY|TOKEN|SECRET|PASSWORD|PASSWD|PRIVATE[_-]?KEY|CREDENTIAL)[A-Z0-9_-]*)\s*[:=]\s*[^\s,;}]+|-----BEGIN [^-]*PRIVATE KEY-----|(?:postgres|mysql|mongodb(?:\+srv)?):\/\/[^\s:@]+:[^\s@]+@/i;
+const SECRET_FIELD = /(?:^|[._-])(?:api[_-]?key|token|secret|password|passwd|private[_-]?key|credential)(?:$|[._-])/i;
+
 export interface BouncerProxyOptions {
   downstream: DownstreamToolClient;
   evaluator: DecisionEvaluator;
@@ -67,6 +70,17 @@ export class BouncerProxy {
       return this.blockedResult(name, normalized.effect, decision.reason);
     }
 
+    const runtimeBlock = this.invariantBlockReason(normalized);
+    if (runtimeBlock !== undefined) {
+      const blocked: Decision = {
+        verdict: "BLOCK",
+        reason: runtimeBlock,
+        latencyMs: 0,
+      };
+      await this.writeAudit(normalized, blocked, false);
+      return this.blockedResult(name, normalized.effect, blocked.reason);
+    }
+
     const decision = await this.evaluator.evaluate({
       ...normalized,
       goal: this.goal,
@@ -89,11 +103,21 @@ export class BouncerProxy {
       return this.blockedResult(name, normalized.effect, decision.reason);
     }
 
-    const invariantReason = this.invariantBlockReason(normalized);
-    if (invariantReason !== undefined) {
+    const needsApproval = this.unmentionedSendDestination(normalized);
+    if (needsApproval !== undefined) {
+      const approval: Decision = {
+        verdict: "ASK",
+        reason: needsApproval,
+        latencyMs: decision.latencyMs,
+      };
+      await this.writeAudit(normalized, approval, false);
+      return this.approvalResult(normalized, approval.reason);
+    }
+
+    if (decision.verdict === "ASK") {
       const blocked: Decision = {
         verdict: "BLOCK",
-        reason: invariantReason,
+        reason: "ASK is only valid for SEND to a destination not named in the original goal; the action was not forwarded.",
         latencyMs: decision.latencyMs,
       };
       await this.writeAudit(normalized, blocked, false);
@@ -122,13 +146,40 @@ export class BouncerProxy {
   }
 
   private invariantBlockReason(action: NormalizedAction): string | undefined {
+    if (action.runtime?.destructiveOperation === true) {
+      return "Bouncer blocked a destructive operation; irreversible actions fail closed.";
+    }
+    if (
+      action.effect === "SEND"
+      && (
+        action.runtime?.outboundText.some((value) => SECRET_VALUE.test(value)) === true
+        || Object.entries(action.runtime?.outboundFields ?? {}).some(
+          ([path, value]) => SECRET_FIELD.test(path) && value.trim().length > 0,
+        )
+      )
+    ) {
+      return "Bouncer blocked a secret-bearing outbound action.";
+    }
+    const executableText = action.runtime?.executableText;
+    if (action.effect === "EXECUTE" && executableText !== undefined) {
+      const normalizedExecutable = executableText.trim().toLocaleLowerCase();
+      if (
+        normalizedExecutable.length >= 4
+        && this.context.some((entry) => entry.toLocaleLowerCase().includes(normalizedExecutable))
+      ) return "Bouncer blocked executable text derived from prior untrusted tool output.";
+    }
+    if (action.effect === "SEND" && action.destination === undefined) {
+      return "Bouncer could not determine the SEND destination; the action was not forwarded.";
+    }
+    return undefined;
+  }
+
+  private unmentionedSendDestination(action: NormalizedAction): string | undefined {
     if (
       action.effect === "SEND"
       && action.destination !== undefined
       && !this.goal?.toLocaleLowerCase().includes(action.destination.toLocaleLowerCase())
-    ) {
-      return `Destination ${action.destination} was not named in the original goal; ASK is treated as BLOCK in V1.`;
-    }
+    ) return `Destination ${action.destination} was not named in the original goal.`;
     return undefined;
   }
 
@@ -167,6 +218,30 @@ export class BouncerProxy {
       isError: true,
       content: [{ type: "text", text: `BOUNCER BLOCKED ${effect} ${tool}: ${reason}` }],
       structuredContent,
+    };
+  }
+
+  private approvalResult(action: NormalizedAction, reason: string): ToolCallResult {
+    const approval: JsonObject = {
+      effect: action.effect,
+      tool: action.toolName,
+      ...(action.destination === undefined ? {} : { destination: action.destination }),
+      reason,
+    };
+    return {
+      isError: true,
+      content: [{
+        type: "text",
+        text: `BOUNCER APPROVAL REQUIRED ${action.effect} ${action.toolName}: ${reason}`,
+      }],
+      structuredContent: {
+        approvalRequired: true,
+        verdict: "ASK",
+        effect: action.effect,
+        tool: action.toolName,
+        reason,
+        approval,
+      },
     };
   }
 
