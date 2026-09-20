@@ -78,6 +78,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--systems", nargs="+", choices=SYSTEMS, default=["deterministic"])
     parser.add_argument("--min-interval", type=float, default=1.6, help="seconds between hosted-API requests")
     parser.add_argument("--workers", type=int, default=1, help="parallel hosted requests (use only when the API permits it)")
+    parser.add_argument("--resume", action="store_true", help="reuse valid decisions already present in --output and retry failures")
     return parser
 
 
@@ -191,19 +192,35 @@ def main(argv: Sequence[str] | None = None, *, evaluator_factory: EvaluatorFacto
         return 2
 
     cases = {t.id: to_cases(t) for t in sample}
+    prior: dict[tuple[str, int, str], Decision] = {}
+    if args.resume and args.output.exists():
+        existing = json.loads(args.output.read_text(encoding="utf-8"))
+        for row in existing.get("trajectories", []):
+            for call in row.get("calls", []):
+                for system, saved in call.get("decisions", {}).items():
+                    decision = Decision(saved.get("verdict"), saved.get("reason", ""), saved.get("latency_ms", 0), saved.get("error"))
+                    if decision.valid and not decision.error:
+                        prior[(row["id"], call["index"], system)] = decision
     decisions: dict[str, dict[str, list[Decision]]] = {}
     for system in systems:
         evaluator = evaluator_factory(system)
         if system in HOSTED:
             print(f"Replaying {len(sample)} trajectories through {system} (hosted API, {args.workers} workers)...", flush=True)
         flat = [(t.id, case) for t in sample for case in cases[t.id]]
+        pending = [(trajectory_id, case) for trajectory_id, case in flat if (trajectory_id, int(case.id.rsplit("#", 1)[1]), system) not in prior]
         if system in HOSTED and args.workers > 1:
             with ThreadPoolExecutor(max_workers=args.workers) as pool:
-                resolved = list(pool.map(lambda item: _decide(evaluator, item[1]), flat))
+                fresh = list(pool.map(lambda item: _decide(evaluator, item[1]), pending))
         else:
-            resolved = [_decide(evaluator, case) for _, case in flat]
+            fresh = [_decide(evaluator, case) for _, case in pending]
+        fresh_by_key = {
+            (trajectory_id, int(case.id.rsplit("#", 1)[1]), system): decision
+            for (trajectory_id, case), decision in zip(pending, fresh)
+        }
         by_trajectory = {t.id: [] for t in sample}
-        for (trajectory_id, _), decision in zip(flat, resolved):
+        for trajectory_id, case in flat:
+            key = (trajectory_id, int(case.id.rsplit("#", 1)[1]), system)
+            decision = prior.get(key) or fresh_by_key[key]
             by_trajectory[trajectory_id].append(decision)
         decisions[system] = by_trajectory
 
