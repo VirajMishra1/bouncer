@@ -79,7 +79,7 @@ A small local web page shows every tool call your agent makes as a person queuei
 - **No agent handy:** open `live/index.html` for the scripted email-injection demo, with a Bouncer ON/OFF switch.
 - **Replay a real proxy run:** `python3 live/audit_to_scenario.py bouncer-audit.jsonl --goal "Read my emails and summarize" -o replay.json`, then use **Load audit log** on `live/index.html`. The audit log does not store the goal or arguments, so you supply the goal.
 
-Defaults are conservative. It is **watch-only**: it shows what Bouncer *would* decide and never blocks anything (`BOUNCER_ENFORCE=1` makes BLOCK and ASK real for Claude Code). It is **local**: verdicts come from local rules and nothing leaves your machine (`BOUNCER_JUDGE=nemotron` with `NVIDIA_API_KEY` uses Nemotron Super, and tool input is redacted and truncated first). Secrets are scrubbed from everything it shows or logs. `BOUNCER_NO_POPUP=1` stops the window opening.
+Defaults are conservative. It is **watch-only**: it shows what Bouncer *would* decide and never blocks anything (`BOUNCER_ENFORCE=1` makes BLOCK and ASK real for Claude Code), and the agent never waits on a model. Crisp dangers (secret exfiltration, piping a download into a shell, destructive commands, secret files) are decided by hard rules. Everything else goes to **Nemotron Super** when `NVIDIA_API_KEY` is set in the environment, and to local rules otherwise. Nemotron sees a redacted, length-capped copy of the tool input, nothing else. Every verdict records which judge made it (`hard-rules`, `nemotron`, `local-rules`). `BOUNCER_JUDGE=rules` keeps everything on your machine; `BOUNCER_JUDGE=nemotron` insists on Nemotron and fails closed without a key. Secrets are scrubbed from everything it shows or logs. `BOUNCER_NO_POPUP=1` stops the window opening.
 
 This is a visualization of decisions. The enforcement path is [`packages/proxy/`](packages/proxy/). Tests: `python3 -m unittest discover -s live -p "test_*.py"`.
 
@@ -152,7 +152,7 @@ Using Bouncer as an MCP proxy in front of your own stdio servers is documented i
 - Effects are `READ`, `SEND`, and `EXECUTE`. `WRITE`, `TRANSACT`, and `AUTHORIZE` are designed but not built.
 - Interception is scoped to MCP tool calls. Attacks that never go through a mediated tool are out of scope.
 - The benchmarks are small and self-authored. The end-to-end set has 12 episodes, and its rules baseline reads curator labels a real deployment would not have, so treat its perfect score as a floor for the test, not a result. See the evidence section above.
-- Bouncer Live judges with local rules and is a visualization, not the enforcement path.
+- Bouncer Live is a visualization, not the enforcement path. Without an `NVIDIA_API_KEY` it falls back to local rules for the cases the hard rules can't settle.
 
 ## Model and API
 

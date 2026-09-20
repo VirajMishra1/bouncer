@@ -88,14 +88,14 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(len([e for e in cap.events if e["type"] == "call"]), 1)
 
     def test_a_crashing_judge_does_not_take_the_server_down(self):
-        original = server.judge_mod.judge
-        server.judge_mod.judge = lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom"))
+        original = server.judge_mod.judge_with_source
+        server.judge_mod.judge_with_source = lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom"))
         try:
             with Capture() as cap:
                 server.handle_hook({"hook_event_name": "UserPromptSubmit", "session_id": "s", "prompt": "x"})
                 out = server.handle_hook({"hook_event_name": "PreToolUse", "session_id": "s", "tool_name": "Read", "tool_input": {}, "tool_use_id": "c"}, sync=True)
         finally:
-            server.judge_mod.judge = original
+            server.judge_mod.judge_with_source = original
         self.assertEqual(out["decision"]["verdict"], "ASK")
         self.assertIn("judge failed", out["decision"]["reason"])
 
@@ -250,8 +250,42 @@ class AuditReplayTests(unittest.TestCase):
 
 
 class JudgeTests(unittest.TestCase):
+    def test_auto_mode_uses_nemotron_only_when_a_key_is_present(self):
+        saved = {k: os.environ.get(k) for k in ("BOUNCER_JUDGE", "NVIDIA_API_KEY")}
+        try:
+            os.environ.pop("BOUNCER_JUDGE", None)
+            os.environ.pop("NVIDIA_API_KEY", None)
+            self.assertFalse(judge.model_enabled())
+            os.environ["NVIDIA_API_KEY"] = "x"
+            self.assertTrue(judge.model_enabled())
+            os.environ["BOUNCER_JUDGE"] = "rules"
+            self.assertFalse(judge.model_enabled())          # explicit rules mode never leaves the machine
+            os.environ["BOUNCER_JUDGE"] = "nemotron"
+            os.environ.pop("NVIDIA_API_KEY")
+            self.assertTrue(judge.model_enabled())           # explicit nemotron mode fails closed without a key
+        finally:
+            for k, v in saved.items():
+                os.environ.pop(k, None) if v is None else os.environ.__setitem__(k, v)
+
+    def test_every_decision_says_which_judge_made_it(self):
+        saved = os.environ.pop("NVIDIA_API_KEY", None)
+        try:
+            os.environ.pop("BOUNCER_JUDGE", None)
+            self.assertEqual(judge.judge_with_source("read it", "Read", {"file_path": "a.md"})["judge"], "hard-rules")
+            self.assertEqual(judge.judge_with_source("fix it", "Bash", {"command": "pytest -q"})["judge"], "local-rules")
+            reply = {"choices": [{"message": {"content": json.dumps({
+                "verdict": "ALLOW", "effect": "EXECUTE", "intent_relationship": "necessary_substep", "intent_match": 0.9,
+                "reason": "Part of the requested work.", "evidence": {"user_goal": "g", "proposed_action": "a", "mismatch": ""}})}}]}
+            d = judge.judge_with_source("fix it", "Bash", {"command": "pytest -q"}, transport=lambda *a: reply, api_key="k")
+            self.assertEqual(d["judge"], "nemotron")
+            self.assertEqual(judge.judge_with_source("fix it", "Bash", {"command": "pytest -q"}, api_key="")["judge"], "nemotron-unavailable")
+        finally:
+            if saved is not None:
+                os.environ["NVIDIA_API_KEY"] = saved
+
     def test_default_judge_is_local_and_needs_no_key(self):
         os.environ.pop("BOUNCER_JUDGE", None)
+        os.environ.pop("NVIDIA_API_KEY", None)
         d = judge.judge("Fix the login bug and run the tests", "Bash", {"command": "pytest -q"}, transport=None, api_key=None)
         self.assertEqual(d["verdict"], "ALLOW")
 

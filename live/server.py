@@ -116,7 +116,7 @@ def _duplicate(p):
 def _decide(goal, tool, inp, recent, meta):
     """Judge one call and broadcast it. Runs inline (enforce mode) or on the judge worker (watch-only)."""
     try:
-        d = judge_mod.judge(goal, tool, inp, recent)
+        d = judge_mod.judge_with_source(goal, tool, inp, recent)
     except Exception as e:      # a broken judge must not kill the server; show it as an unresolved ASK
         d = {"verdict": "ASK", "effect": "EXECUTE", "intent_relationship": "ambiguous", "intent_match": 0.0,
              "reason": f"The judge failed ({type(e).__name__}); nothing was decided.",

@@ -188,8 +188,20 @@ def _cap(value, limit=600):
 
 
 def model_enabled():
-    """The Nemotron judge is opt-in (BOUNCER_JUDGE=nemotron) because it sends redacted tool input to a hosted API."""
-    return os.environ.get("BOUNCER_JUDGE", "rules").strip().lower() == "nemotron"
+    """Which judge decides the cases the hard rules cannot.
+
+    BOUNCER_JUDGE=nemotron  always use Nemotron Super (fail closed if no key)
+    BOUNCER_JUDGE=rules     never leave the machine; local rules only
+    BOUNCER_JUDGE=auto      (default) Nemotron when NVIDIA_API_KEY is set in the environment, else local rules
+
+    Nemotron sees a redacted, length-capped copy of the tool input; nothing else is sent.
+    """
+    mode = os.environ.get("BOUNCER_JUDGE", "auto").strip().lower()
+    if mode == "nemotron":
+        return True
+    if mode == "rules":
+        return False
+    return bool(os.environ.get("NVIDIA_API_KEY", "").strip())
 
 
 def _request_body(goal, tool, inp, recent, effect):
@@ -254,24 +266,34 @@ def _validate_model(raw, expected_effect, goal, action):
 
 def judge(goal, tool, inp, recent=None, *, transport=None, api_key=None):
     """Return the exact MASTERPLAN 4.5 decision shape for one proposed tool call."""
+    decision = judge_with_source(goal, tool, inp, recent, transport=transport, api_key=api_key)
+    decision.pop("judge", None)
+    return decision
+
+
+def judge_with_source(goal, tool, inp, recent=None, *, transport=None, api_key=None):
+    """Same decision plus a `judge` field: hard-rules, local-rules, nemotron, or nemotron-unavailable."""
     goal = str(goal or "")
     inp = inp or {}
     action = f"{tool}({summarize(tool, inp)})"
     effect = _effect(tool, inp)
     hard = _hard_decision(goal, tool, inp, action, effect)
     if hard:
+        hard["judge"] = "hard-rules"
         return hard
 
     if transport is None and api_key is None and not model_enabled():
-        return rules_judge.judge(goal, tool, inp, recent)
+        local = rules_judge.judge(goal, tool, inp, recent)
+        local["judge"] = "local-rules"
+        return local
 
     key = _load_api_key() if api_key is None else api_key.strip()
     if not key:
-        return _decision("BLOCK", effect, "ambiguous", 0.0, "The intent check is unavailable, so Bouncer stopped the action.", goal, action, "NVIDIA_API_KEY is not configured.")
+        return {**_decision("BLOCK", effect, "ambiguous", 0.0, "The intent check is unavailable, so Bouncer stopped the action.", goal, action, "NVIDIA_API_KEY is not configured."), "judge": "nemotron-unavailable"}
 
     headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json", "Accept": "application/json"}
     try:
         raw = (transport or _default_transport)(ENDPOINT, headers, _request_body(goal, tool, inp, recent, effect), 20)
-        return _validate_model(raw, effect, goal, action)
+        return {**_validate_model(raw, effect, goal, action), "judge": "nemotron"}
     except (KeyError, TypeError, ValueError, json.JSONDecodeError, urllib.error.URLError, TimeoutError, OSError):
-        return _decision("BLOCK", effect, "ambiguous", 0.0, "The intent check failed, so Bouncer stopped the action.", goal, action, "No valid decision was returned.")
+        return {**_decision("BLOCK", effect, "ambiguous", 0.0, "The intent check failed, so Bouncer stopped the action.", goal, action, "No valid decision was returned."), "judge": "nemotron-unavailable"}
