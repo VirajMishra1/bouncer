@@ -25,6 +25,13 @@ PATCH_FILE_RE = re.compile(r"\*\*\* (?:Add|Update|Delete) File: ([^\\\n\"]+)")
 TOOL_RE = re.compile(r"tools\.(\w+)\(")
 
 
+def repo_root_is_safe(root):
+    """Only a real git repo that is not the home folder may be auto-included, so copying these files
+    into ~/something can never put every Codex chat on the machine in scope."""
+    path = Path(root)
+    return (path / ".git").exists() and path != Path.home() and path != Path(path.anchor)
+
+
 def prefixes():
     """Folders whose Codex sessions may be shown: this repo, BOUNCER_CODEX_CWD, and ~/.bouncer-live/codex_cwds."""
     out = [p for p in os.environ.get("BOUNCER_CODEX_CWD", "").split(":") if p]
@@ -32,7 +39,8 @@ def prefixes():
         out += [ln.strip() for ln in CONFIG_FILE.read_text().splitlines() if ln.strip() and not ln.startswith("#")]
     except OSError:
         pass
-    out.append(REPO_ROOT)
+    if repo_root_is_safe(REPO_ROOT):
+        out.append(REPO_ROOT)
     return [p.rstrip("/") for p in out]
 
 

@@ -108,6 +108,14 @@ class CodexWatchTests(unittest.TestCase):
         self.assertFalse(codex_watch.in_scope("/work/bouncer-other", allowed))
         self.assertFalse(codex_watch.in_scope("/Users/me/job-search", allowed))
 
+    def test_auto_included_repo_root_must_be_a_git_repo_and_never_home(self):
+        repo = Path(tempfile.mkdtemp())
+        self.assertFalse(codex_watch.repo_root_is_safe(repo))          # not a git repo
+        (repo / ".git").mkdir()
+        self.assertTrue(codex_watch.repo_root_is_safe(repo))
+        self.assertFalse(codex_watch.repo_root_is_safe(Path.home()))   # copied into ~/x => parent is home
+        self.assertFalse(codex_watch.repo_root_is_safe("/"))
+
     def test_tool_call_mapping(self):
         cmd = {"type": "custom_tool_call", "name": "exec", "call_id": "c1",
                "input": 'const r = await tools.exec_command({"cmd":"sed -n \'1,20p\' a.py","workdir":"/x"});'}
