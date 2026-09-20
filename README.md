@@ -1,4 +1,6 @@
-# Bouncer
+<p align="center">
+  <img src="docs/assets/logo.png" alt="Bouncer: the intent firewall for AI agents. A bouncer with sunglasses guards the door. Powered by NVIDIA Nemotron." width="860">
+</p>
 
 ### The intent firewall for AI agents — Nemotron decides whether each tool call is what the user actually asked for.
 
@@ -11,6 +13,14 @@ Bouncer sits between an AI agent and its tools. For every action the agent tries
 **Scope of the claim.** Bouncer does not claim to stop all prompt injection. It aims to stop *unauthorized tool-mediated effects* in the tools it mediates.
 
 ---
+
+## What is Bouncer? (in one picture)
+
+<p align="center">
+  <img src="docs/assets/how-it-works.png" alt="Six panels. 1: you ask your AI helper for a job. 2: a sneaky note hides a bad order. 3: Bouncer guards the door and asks whether the user really asked for each action. 4: if the user asked for it, it walks in. 5: if not, Bouncer turns it away. 6: your job still gets done and the bad order never happens." width="900">
+</p>
+
+Every frame above is a real moment from our own [Bouncer Live](#bouncer-live-watch-your-agent-get-checked) scene (source and rebuild scripts in [`docs/assets/`](docs/assets/)).
 
 ## The problem
 
