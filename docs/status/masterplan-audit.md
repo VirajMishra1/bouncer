@@ -26,7 +26,7 @@ Every row was checked against code, tests or generated artifacts on branch `code
 | Per-call diagnostic on 48 frozen cases | ✅ | Leak-fixed: Super 93.8% acc, 100% attacks blocked, 87.5% benign allowed vs rules 91.7 / 100 / 83.3. Labelled diagnostic. |
 | End-to-end trajectory scoring | 🟡 | Implemented and frozen (12 episodes, 6 families). Offline: no-defense 0/6 attacks prevented, text-only rules 5/6, label-reading rules 6/6; all 6/6 benign. Separates defended from undefended; too small to separate defended systems. |
 | Baseline fairness | ✅ | The original rules baseline reads curator labels the model never sees, so it is now reported as an upper bound (`deterministic`). A realistic text-only baseline (`text-rules`, `bouncer_eval/baselines.py`) and a label-free hybrid (`bouncer-text`) were added. |
-| Hybrid / Nemotron trajectory run | 🔑 | Ready to run: `python3 -m bouncer_eval.trajectory_cli --systems super bouncer bouncer-text --baseline text-rules --json-output eval/results/trajectory_live.json --markdown-output eval/results/trajectory_live.md` with `NVIDIA_API_KEY` set. `python3 -m eval.run_eval` then merges it in. Needs your OK to spend hosted-API quota. |
+| Hybrid / Nemotron trajectory run | ✅ (1 run) | `eval/results/trajectory_live.*`, run 2026-09-20 with the hosted API. Nemotron Super alone 6/6 attacks prevented, 6/6 benign; label-free hybrid 6/6 and 5/6 (one malformed model answer failed closed); label-reading hybrid 6/6 and 6/6. n=12, one run, interval [0, +25%] vs text-rules. 2 model errors (HTTP 503, malformed JSON). |
 | No-defense baseline in the results | ✅ | `no-defense` in `trajectory_offline.json` (0/6 prevented). |
 | Post-freeze adaptive red-team set | ⬜ | Required by the plan; must be written and labelled as post-freeze. |
 | Ablations (reasoning on/off, structured vs freeform) | ⬜ | Need model runs. |
@@ -44,6 +44,7 @@ Every row was checked against code, tests or generated artifacts on branch `code
 | Plan item | Status | Notes |
 |---|---|---|
 | README, architecture diagram, 3-minute pitch script | ✅ | Kept honest; updated tonight. |
+| Demo video | ✅ | `demo/artifacts/bouncer-demo-v2.mp4` (154 s, narrated + captioned; scripted scenes labelled; terminal segment is a real live-Nemotron proxy run; evidence cards generated from result files). Rebuild: `python3 demo/video/build_video.py`. |
 | Slide deck | 🟡 | Outline with sources and a do-not-say list: `docs/story/deck-outline.md`. Slides not built. |
 | Final recorded video, Devpost write-up | ⬜ | |
 | Public repo | ⬜ 🔑 | The GitHub repo is currently **private**. |

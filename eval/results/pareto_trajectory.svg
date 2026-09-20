@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="540" height="540" viewBox="0 0 540 540" font-family="system-ui,sans-serif" role="img" aria-labelledby="pareto-title pareto-desc">
 <title id="pareto-title">Bouncer: safety vs. usability (end-to-end)</title>
-<desc id="pareto-desc">deterministic: 100% benign, 100% attacks stopped; no-defense: 100% benign, 0% attacks stopped; text-rules: 100% benign, 83% attacks stopped</desc>
+<desc id="pareto-desc">deterministic: 100% benign, 100% attacks stopped; no-defense: 100% benign, 0% attacks stopped; text-rules: 100% benign, 83% attacks stopped; bouncer-super: 100% benign, 100% attacks stopped; bouncer-text-super: 83% benign, 100% attacks stopped; nemotron-super: 100% benign, 100% attacks stopped</desc>
 <rect width="540" height="540" fill="#ffffff"/>
 <rect x="270" y="70" width="200" height="200" fill="#12b88618"/>
 <text x="464" y="86" text-anchor="end" font-size="11" fill="#12b886">secure &amp; usable</text>
@@ -27,4 +27,10 @@
 <text x="470.0" y="458.0" text-anchor="middle" font-size="11" font-weight="400" fill="#868e96">no-defense</text>
 <circle cx="470.0" cy="136.7" r="6" fill="#868e96" fill-opacity="0.85" stroke="#fff" stroke-width="1.5"/>
 <text x="470.0" y="124.7" text-anchor="middle" font-size="11" font-weight="400" fill="#868e96">text-rules</text>
+<circle cx="470.0" cy="70.0" r="8" fill="#12b886" fill-opacity="0.85" stroke="#fff" stroke-width="1.5"/>
+<text x="470.0" y="58.0" text-anchor="middle" font-size="11" font-weight="700" fill="#12b886">bouncer-super</text>
+<circle cx="403.3" cy="70.0" r="8" fill="#12b886" fill-opacity="0.85" stroke="#fff" stroke-width="1.5"/>
+<text x="403.3" y="58.0" text-anchor="middle" font-size="11" font-weight="700" fill="#12b886">bouncer-text-super</text>
+<circle cx="470.0" cy="70.0" r="8" fill="#12b886" fill-opacity="0.85" stroke="#fff" stroke-width="1.5"/>
+<text x="470.0" y="58.0" text-anchor="middle" font-size="11" font-weight="700" fill="#12b886">nemotron-super</text>
 </svg>

@@ -59,6 +59,11 @@ def parse_decision(content: str) -> Decision:
     return Decision(verdict, reason.strip())
 
 
+def _is_malformed(error: str) -> bool:
+    """Syntax-level garbage only (unparseable JSON or not an object). A wrong verdict value is not retried."""
+    return error.startswith("invalid JSON response") or error == "response must be a JSON object"
+
+
 def _default_transport(url: str, headers: dict[str, str], body: dict[str, Any]) -> dict[str, Any]:
     request = Request(url, data=json.dumps(body).encode("utf-8"), headers=headers, method="POST")
     with urlopen(request, timeout=60) as response:
@@ -97,6 +102,11 @@ class NemotronEvaluator:
                 response = self._transport(ENDPOINT, headers, body)
                 content = response["choices"][0]["message"]["content"]
                 decision = parse_decision(content)
+                if decision.error and _is_malformed(decision.error) and attempt < self._max_attempts:
+                    # The model returned unparseable output (seen in practice as truncated JSON). Ask again
+                    # rather than fail a legitimate action; a still-invalid answer fails closed as before.
+                    self._sleep(0.5)
+                    continue
                 return Decision(
                     decision.verdict,
                     decision.reason,

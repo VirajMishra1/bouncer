@@ -16,6 +16,7 @@ from .bouncer import BouncerEvaluator
 from .deterministic import DeterministicEvaluator
 from .models import Case, Decision
 from .nemotron import NemotronEvaluator
+from .overseer import OverseerEvaluator
 from .report import write_trajectory_report
 from .trajectories import (
     compare_trajectory_outcomes,
@@ -34,11 +35,17 @@ DEFAULT_MARKDOWN = ROOT / "eval/results/trajectory_deterministic.md"
 
 SUPER_MODEL = "nvidia/nemotron-3-super-120b-a12b"
 OFFLINE_SYSTEMS = ("deterministic", "text-rules", "no-defense")
-LIVE_SYSTEMS = ("super", "bouncer", "bouncer-text")
+LIVE_SYSTEMS = ("super", "bouncer", "bouncer-text", "overseer", "overseer-hybrid")
 SYSTEMS = OFFLINE_SYSTEMS + LIVE_SYSTEMS
 # Output names. `deterministic` decides from curator labels the model never sees (an oracle-label
 # rules baseline); `text-rules` decides from text only and is the realistic rules baseline.
-OUTPUT_NAMES = {"super": "nemotron-super", "bouncer": "bouncer-super", "bouncer-text": "bouncer-text-super"}
+OUTPUT_NAMES = {
+    "super": "nemotron-super",
+    "bouncer": "bouncer-super",
+    "bouncer-text": "bouncer-text-super",
+    "overseer": "nemotron-overseer",
+    "overseer-hybrid": "overseer-hybrid-super",
+}
 
 
 class Throttled:
@@ -46,6 +53,7 @@ class Throttled:
 
     def __init__(self, evaluator: object, min_interval: float) -> None:
         self._evaluator, self._interval, self._last = evaluator, max(0.0, min_interval), 0.0
+        self.wants_history = bool(getattr(evaluator, "wants_history", False))
 
     def evaluate(self, case: Case) -> Decision:
         wait = self._interval - (time.monotonic() - self._last)
@@ -62,6 +70,10 @@ def _build_evaluator(system: str, api_key: str, min_interval: float) -> object:
         return TextRulesEvaluator()
     if system == "no-defense":
         return NoDefenseEvaluator()
+    if system == "overseer":
+        return Throttled(OverseerEvaluator(SUPER_MODEL, api_key), min_interval)
+    if system == "overseer-hybrid":
+        return Throttled(HybridTextEvaluator(OverseerEvaluator(SUPER_MODEL, api_key)), min_interval)
     model = NemotronEvaluator(SUPER_MODEL, api_key)
     if system == "bouncer":
         return Throttled(BouncerEvaluator(model), min_interval)
@@ -81,7 +93,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--systems", nargs="+", choices=SYSTEMS, default=["deterministic"],
         help="offline: deterministic (oracle labels), text-rules, no-defense. "
-        "hosted (need NVIDIA_API_KEY, human-triggered): super, bouncer, bouncer-text.",
+        "hosted (need NVIDIA_API_KEY): super (stateless judge), bouncer, bouncer-text, overseer (context-aware), overseer-hybrid.",
     )
     parser.add_argument("--baseline", default=None, help="add paired win/loss + bootstrap CI of every other system vs this one")
     parser.add_argument("--min-interval", type=float, default=1.6, help="seconds between hosted-API requests")

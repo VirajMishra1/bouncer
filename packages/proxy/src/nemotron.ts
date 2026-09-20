@@ -138,7 +138,13 @@ export class NemotronEvaluator {
           const parsed = parseDecision(content);
           return { ...parsed, latencyMs: performance.now() - started };
         } catch (error) {
-          return this.errorDecision(started, error instanceof Error ? error.message : String(error));
+          const message = error instanceof Error ? error.message : String(error);
+          // Unparseable output (seen in practice as truncated JSON) is retried; a wrong verdict value is not.
+          if (attempt < this.maxAttempts && /^invalid JSON response|^response must be a JSON object/.test(message)) {
+            await this.sleep(500);
+            continue;
+          }
+          return this.errorDecision(started, message);
         }
       } catch (error) {
         if (attempt < this.maxAttempts) {

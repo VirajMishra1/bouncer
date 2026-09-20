@@ -23,3 +23,6 @@ dist/
 # eval artifacts (keep results/ committed, ignore scratch)
 eval/results/scratch/
 .DS_Store
+
+# demo video build intermediates (hundreds of MB of frames)
+demo/video/build/

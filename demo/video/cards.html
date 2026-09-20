@@ -1,0 +1,167 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Bouncer video cards</title>
+<style>
+:root{--bg:#060916;--panel:#10163a;--panel2:#182050;--line:#2a3563;--ink:#eaf0ff;--muted:#8d99c7;
+  --allow:#47e6a8;--ask:#ffc857;--block:#ff4d63;--neon:#ff3fb4;--cyan:#5ee7ff;--blue:#4aa3ff}
+*{box-sizing:border-box}
+html,body{margin:0;width:1280px;height:720px;background:var(--bg);color:var(--ink);overflow:hidden;
+  font-family:"Avenir Next","Segoe UI",system-ui,-apple-system,sans-serif}
+.scene{position:absolute;inset:0;display:none}
+.scene.on{display:block}
+.mono{font-family:Menlo,"SF Mono",monospace}
+
+/* ---------- title / close ---------- */
+.bgimg{position:absolute;inset:0;background-size:cover;background-position:center;filter:blur(7px) brightness(.42) saturate(1.1);transform:scale(1.08)}
+.vig{position:absolute;inset:0;background:radial-gradient(ellipse at 50% 45%,rgba(6,9,22,.15) 0%,rgba(6,9,22,.85) 100%)}
+.center{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:0 90px}
+.logo{font-size:118px;font-weight:900;letter-spacing:10px;color:#ffe3f7;-webkit-text-stroke:2px var(--neon);text-shadow:0 0 18px var(--neon),0 0 60px rgba(255,63,180,.55);margin:0;line-height:1}
+.tag{margin-top:14px;font-size:38px;font-weight:700;color:var(--cyan);text-shadow:0 0 18px rgba(94,231,255,.4)}
+.cat{margin-top:44px;max-width:1020px;background:rgba(16,22,58,.82);border:1.5px solid var(--line);border-radius:16px;padding:22px 34px;font-size:28px;line-height:1.35}
+.cat .a{color:var(--muted)}.cat .b{color:#fff;font-weight:700}.cat .b em{font-style:normal;color:var(--allow)}
+.chips{margin-top:26px;display:flex;gap:12px;font-size:16px;color:var(--muted);letter-spacing:.5px}
+.chip{border:1px solid var(--line);border-radius:999px;padding:6px 14px;background:rgba(16,22,58,.7)}
+.repo{margin-top:30px;font-size:26px;color:var(--cyan)}
+.repo small{display:block;font-size:16px;color:var(--muted);margin-top:8px}
+
+/* ---------- terminal ---------- */
+.win{position:absolute;left:30px;top:22px;right:30px;bottom:104px;background:#0c1324;border:1.5px solid #2d3d5b;border-radius:18px;overflow:hidden}
+.win .tb{height:40px;background:#0f1930;border-bottom:1px solid #22304d;display:flex;align-items:center;padding:0 16px;gap:8px;color:#c4d2e8;font-size:15px}
+.dot{width:12px;height:12px;border-radius:50%}
+.win .tb .t{margin-left:14px}
+.win .body{padding:12px 22px;font-size:16px;line-height:22px;white-space:pre;color:#e2e8f0}
+.ln.h{color:#4dd0e1;font-weight:700}.ln.harm{color:#ff5c5c}.ln.blk{color:#5bdc8e}.ln.done{color:#ffce54}.ln.dim{color:#97a3b8}.ln.bad{color:#ff7878}.ln.ok{color:#5bdc8e}
+.ln.read{color:#7db8ff}
+.cursor{display:inline-block;width:9px;height:17px;background:#4dd0e1;vertical-align:-3px;margin-left:2px}
+
+/* ---------- bottom bar (terminal) ---------- */
+.bar{position:absolute;left:0;right:0;bottom:0;height:80px;background:#070b1d;border-top:2px solid var(--line);display:flex;align-items:center;gap:18px;padding:0 24px}
+.pill{flex:none;padding:9px 16px;border-radius:999px;font-weight:900;letter-spacing:1.5px;font-size:14px;border:2px solid}
+.pill.live{color:#062;background:var(--allow);border-color:var(--allow)}
+.pill.off{color:#2b1f00;background:var(--ask);border-color:var(--ask)}
+.bar .cap{flex:1;min-width:0}
+.bar .m{font-size:22px;font-weight:700;line-height:1.2}
+.bar .s{font-size:14px;color:var(--muted);margin-top:3px;line-height:1.25}
+
+/* ---------- evidence ---------- */
+.ev{position:absolute;inset:0;padding:34px 48px 0}
+.ev .kick{display:inline-block;font-size:14px;font-weight:900;letter-spacing:2px;padding:5px 12px;border-radius:999px;color:#062;background:var(--allow)}
+.ev .kick.diag{background:var(--ask);color:#2b1f00}
+.ev h2{margin:12px 0 2px;font-size:36px;line-height:1.1}
+.ev .sub{color:var(--muted);font-size:17px}
+table.t{border-collapse:separate;border-spacing:0 7px;width:100%;margin-top:14px}
+table.t th{font-size:13px;letter-spacing:1.4px;text-transform:uppercase;color:var(--muted);text-align:left;font-weight:700;padding:0 12px}
+table.t td{background:var(--panel);padding:10px 12px;font-size:20px;vertical-align:middle}
+table.t td:first-child{border-radius:10px 0 0 10px;border-left:4px solid var(--line)}
+table.t td:last-child{border-radius:0 10px 10px 0}
+table.t tr.hosted td:first-child{border-left-color:var(--cyan)}
+table.t tr.none td:first-child{border-left-color:var(--block)}
+table.t tr.upper td{opacity:.72}
+table.t tr.hi td{background:#14304a}
+.sys b{font-weight:700}.sys small{display:block;color:var(--muted);font-size:13px;margin-top:2px}
+.frac{font-weight:800;font-variant-numeric:tabular-nums}
+.meter{display:inline-block;vertical-align:middle;width:120px;height:12px;background:#0b1030;border-radius:6px;margin-left:10px;overflow:hidden}
+.meter i{display:block;height:100%}
+.good{color:var(--allow)}.warn{color:var(--ask)}.bad{color:var(--block)}
+.foot{position:absolute;left:48px;right:48px;bottom:22px;font-size:15px;line-height:1.4;color:var(--muted)}
+.foot b{color:var(--ink)}
+.two{display:flex;gap:26px}
+.two>div{flex:1}
+.ftbox{margin-top:14px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 16px}
+.ftbox h3{margin:0 0 6px;font-size:14px;letter-spacing:1.4px;text-transform:uppercase;color:var(--muted)}
+.ftbox .kv{display:flex;justify-content:space-between;font-size:17px;padding:2px 0}
+</style></head>
+<body>
+
+<!-- TITLE -->
+<div class="scene" id="title">
+  <div class="bgimg" id="bg1"></div><div class="vig"></div>
+  <div class="center">
+    <h1 class="logo">BOUNCER</h1>
+    <div class="tag">the intent firewall for AI agents</div>
+    <div class="cat"><span class="a">Prompt filters ask whether content looks malicious.</span><br>
+      <span class="b">Bouncer asks whether the side effect is <em>authorized by the user's goal</em>.</span></div>
+    <div class="chips"><span class="chip">NVIDIA Nemotron track</span><span class="chip">SteelHacks</span></div>
+  </div>
+</div>
+
+<!-- TERMINAL -->
+<div class="scene" id="term">
+  <div class="win">
+    <div class="tb"><span class="dot" style="background:#ff5f56"></span><span class="dot" style="background:#ffbd2e"></span><span class="dot" style="background:#27c93f"></span><span class="t" id="termTitle"></span></div>
+    <div class="body mono" id="termBody"></div>
+  </div>
+  <div class="bar"><span class="pill live" id="termPill"></span><div class="cap"><div class="m" id="termM"></div><div class="s" id="termS"></div></div></div>
+</div>
+
+<!-- EVIDENCE -->
+<div class="scene" id="ev1"><div class="ev" id="ev1c"></div></div>
+<div class="scene" id="ev2"><div class="ev" id="ev2c"></div></div>
+
+<!-- CLOSE -->
+<div class="scene" id="close">
+  <div class="bgimg" id="bg2"></div><div class="vig"></div>
+  <div class="center">
+    <h1 class="logo" style="font-size:84px">BOUNCER</h1>
+    <div class="tag" style="font-size:32px">the intent firewall for AI agents</div>
+    <div class="cat"><span class="a">Prompt filters ask whether content looks malicious.</span><br>
+      <span class="b">Bouncer asks whether the side effect is <em>authorized by the user's goal</em>.</span></div>
+    <div class="repo mono" id="repoLine"></div>
+  </div>
+</div>
+
+<script>
+const $=id=>document.getElementById(id);
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const pct=v=>(v*100).toFixed(1).replace(/\.0$/,"")+"%";
+function hideAll(){document.querySelectorAll(".scene").forEach(s=>s.classList.remove("on"));}
+function meter(n,d,color){return `<span class="meter"><i style="width:${d?100*n/d:0}%;background:${color}"></i></span>`;}
+
+window.show=(name,p)=>{
+  const D=window.DATA;hideAll();$(name).classList.add("on");p=p||{};
+  if(name==="title"){$("bg1").style.backgroundImage=`url(${D.bg})`;}
+  if(name==="close"){$("bg2").style.backgroundImage=`url(${D.bg})`;$("repoLine").innerHTML=`${esc(D.repo)}<small>${esc(D.repoNote)}</small>`;}
+  if(name==="term"){
+    const T=D.terminal,lines=T.pages[p.page].lines,n=p.n==null?lines.length:p.n;
+    $("termTitle").textContent=T.pages[p.page].title;
+    $("termBody").innerHTML=lines.slice(0,n).map(l=>`<div class="ln ${l.cls}">${esc(l.text)||" "}</div>`).join("")+(p.cursor?'<span class="cursor"></span>':"");
+    const pill=$("termPill");pill.textContent=T.pill;pill.className="pill "+(T.live?"live":"off");
+    $("termM").textContent=T.pages[p.page].cap;$("termS").textContent=T.pages[p.page].sub;
+  }
+  if(name==="ev1")renderE2E();
+  if(name==="ev2")renderPerCall();
+};
+
+function renderE2E(){
+  const E=window.DATA.e2e;
+  const rows=E.rows.map(r=>{
+    const pv=r.prevented,bn=r.benign;
+    const pc=pv[0]===pv[1]?"good":(pv[0]===0?"bad":"warn"),bc=bn[0]===bn[1]?"good":"warn";
+    return `<tr class="${r.kind} ${r.hi?"hi":""}"><td class="sys"><b>${esc(r.label)}</b><small>${esc(r.note)}</small></td>
+      <td><span class="frac ${pc}">${pv[0]}/${pv[1]}</span>${meter(pv[0],pv[1],pc==="good"?"#47e6a8":pc==="bad"?"#ff4d63":"#ffc857")}</td>
+      <td><span class="frac ${bc}">${bn[0]}/${bn[1]}</span></td>
+      <td class="frac">${r.invalid==null?"-":r.invalid}</td></tr>`;}).join("");
+  $("ev1c").innerHTML=`<span class="kick">HEADLINE · END-TO-END</span>
+   <h2>Does the attacker's objective actually succeed?</h2>
+   <div class="sub">${esc(E.sub)}</div>
+   <table class="t"><tr><th>System</th><th>Attacker objective prevented</th><th>Benign tasks completed</th><th>Invalid outputs</th></tr>${rows}</table>
+   <div class="foot">${E.foot.map(f=>`<div>${f}</div>`).join("")}</div>`;
+}
+function renderPerCall(){
+  const P=window.DATA.percall,F=window.DATA.finetune;
+  const rows=P.rows.map(r=>`<tr class="${r.kind}"><td class="sys"><b>${esc(r.label)}</b><small>${esc(r.note)}</small></td>
+    <td class="frac">${r.acc}</td><td><span class="frac good">${r.att[0]}/${r.att[1]}</span></td>
+    <td><span class="frac ${r.ben[0]===r.ben[1]?"good":"warn"}">${r.ben[0]}/${r.ben[1]}</span></td><td class="frac ${r.inv?"warn":""}">${r.inv}</td><td class="frac">${esc(r.p50)}</td></tr>`).join("");
+  let ft="";
+  if(F&&F.rows&&F.rows.length){
+    ft=`<div class="ftbox"><h3>${esc(F.title)}</h3>${F.rows.map(r=>`<div class="kv"><span>${esc(r[0])}</span><b>${esc(r[1])}</b></div>`).join("")}<div style="color:var(--muted);font-size:13px;margin-top:6px">${esc(F.note)}</div></div>`;
+  }
+  const ms=(P.misses||[]).map(m=>`<div class="ftbox"><h3>${esc(m.title)}</h3><div style="font-size:19px;line-height:1.4">${esc(m.text)}</div><div class="mono" style="color:var(--muted);font-size:14px;margin-top:6px">${esc(m.ids)}</div></div>`).join("");
+  $("ev2c").innerHTML=`<span class="kick diag">DIAGNOSTIC · PER-CALL</span>
+   <h2>One tool call at a time</h2>
+   <div class="sub">${esc(P.sub)}</div>
+   <table class="t"><tr><th>System</th><th>Accuracy</th><th>Attacks blocked</th><th>Benign allowed</th><th>Invalid</th><th>p50 latency</th></tr>${rows}</table>
+   ${ms}${ft}
+   <div class="foot">${P.foot.map(f=>`<div>${f}</div>`).join("")}</div>`;
+}
+</script>
+</body></html>

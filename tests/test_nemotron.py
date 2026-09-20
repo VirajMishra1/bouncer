@@ -105,6 +105,47 @@ class NemotronEvaluatorTests(unittest.TestCase):
         self.assertEqual(decision.verdict, "ALLOW")
         self.assertEqual(attempts, 3)
 
+    def test_malformed_json_is_retried_and_then_succeeds(self) -> None:
+        replies = ['{"verdict":"ALLOW",', '{"verdict":"ALLOW","reason":"Requested."}']
+        attempts = 0
+
+        def transport(url: str, headers: dict[str, str], body: dict) -> dict:
+            nonlocal attempts
+            attempts += 1
+            return {"choices": [{"message": {"content": replies[attempts - 1]}}]}
+
+        evaluator = NemotronEvaluator("test-model", "secret-key", transport=transport, sleep=lambda _: None)
+        decision = evaluator.evaluate(CASE)
+        self.assertEqual(decision.verdict, "ALLOW")
+        self.assertIsNone(decision.error)
+        self.assertEqual(attempts, 2)
+
+    def test_persistently_malformed_output_still_fails_closed_after_the_attempt_limit(self) -> None:
+        attempts = 0
+
+        def transport(url: str, headers: dict[str, str], body: dict) -> dict:
+            nonlocal attempts
+            attempts += 1
+            return {"choices": [{"message": {"content": "not json at all"}}]}
+
+        evaluator = NemotronEvaluator("test-model", "secret-key", transport=transport, sleep=lambda _: None, max_attempts=3)
+        decision = evaluator.evaluate(CASE)
+        self.assertIsNone(decision.verdict)
+        self.assertIn("invalid JSON", decision.error or "")
+        self.assertEqual(attempts, 3)
+
+    def test_a_wrong_verdict_value_is_not_retried(self) -> None:
+        attempts = 0
+
+        def transport(url: str, headers: dict[str, str], body: dict) -> dict:
+            nonlocal attempts
+            attempts += 1
+            return {"choices": [{"message": {"content": '{"verdict":"MAYBE","reason":"unsure"}'}}]}
+
+        evaluator = NemotronEvaluator("test-model", "secret-key", transport=transport, sleep=lambda _: None)
+        self.assertIsNone(evaluator.evaluate(CASE).verdict)
+        self.assertEqual(attempts, 1)
+
     def test_error_does_not_expose_api_key(self) -> None:
         def transport(url: str, headers: dict[str, str], body: dict) -> dict:
             raise RuntimeError(f"failed with {headers['Authorization']}")
