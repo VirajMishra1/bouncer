@@ -105,6 +105,37 @@ class NemotronEvaluatorTests(unittest.TestCase):
         self.assertEqual(decision.verdict, "ALLOW")
         self.assertEqual(attempts, 3)
 
+    def test_rate_limits_are_waited_out_with_retry_after_and_do_not_fail_the_action(self) -> None:
+        attempts, slept = 0, []
+
+        def transport(url: str, headers: dict[str, str], body: dict) -> dict:
+            nonlocal attempts
+            attempts += 1
+            if attempts <= 5:
+                raise HTTPError(url, 429, "slow down", {"Retry-After": "7"} if attempts == 1 else {}, None)
+            return {"choices": [{"message": {"content": '{"verdict":"ALLOW","reason":"Requested."}'}}]}
+
+        evaluator = NemotronEvaluator("test-model", "secret-key", transport=transport, sleep=slept.append)
+        decision = evaluator.evaluate(CASE)
+        self.assertEqual(decision.verdict, "ALLOW")
+        self.assertEqual(attempts, 6)
+        self.assertEqual(slept[0], 7.0)             # honoured Retry-After
+        self.assertEqual(slept[1:5], [10.0, 20.0, 40.0, 60.0])  # then backed off, capped at 60 s
+
+    def test_persistent_rate_limiting_still_fails_closed(self) -> None:
+        attempts = 0
+
+        def transport(url: str, headers: dict[str, str], body: dict) -> dict:
+            nonlocal attempts
+            attempts += 1
+            raise HTTPError(url, 429, "slow down", {}, None)
+
+        evaluator = NemotronEvaluator("test-model", "secret-key", transport=transport, sleep=lambda _: None)
+        decision = evaluator.evaluate(CASE)
+        self.assertIsNone(decision.verdict)
+        self.assertIn("429", decision.error or "")
+        self.assertEqual(attempts, 7)               # 1 try + 6 rate-limit retries
+
     def test_malformed_json_is_retried_and_then_succeeds(self) -> None:
         replies = ['{"verdict":"ALLOW",', '{"verdict":"ALLOW","reason":"Requested."}']
         attempts = 0
