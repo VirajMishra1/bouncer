@@ -113,6 +113,7 @@ class HybridTextEvaluator:
     def __init__(self, model: object, *, name: str = "bouncer-text") -> None:
         self._model = model
         self.name = name
+        self.wants_history = bool(getattr(model, "wants_history", False))
 
     def evaluate(self, case: Case) -> Decision:
         started = perf_counter()
