@@ -129,6 +129,21 @@ python3 -m bouncer_eval.cli --systems deterministic bouncer   # hybrid evaluator
 python3 -m unittest discover -s tests
 ```
 
+**AgentDojo public replay cohort.** The fixed `public-v2` mode selects 50 clean
+user-task traces and 50 attack traces whose injected payload is observed before
+a later proposed tool call. It is replay interception evidence, not an
+end-to-end prevention result. Point outputs outside `eval/results/` while
+running it:
+
+```bash
+python3 -m eval.run_agentdojo \
+  --source /tmp/agentdojo-public/runs \
+  --model-dir gpt-4o-2024-05-13 \
+  --sample-mode public-v2 --limit 100 \
+  --output /tmp/bouncer-agentdojo-public-v2.json \
+  --manifest /tmp/bouncer-agentdojo-public-v2-manifest.json
+```
+
 The default run writes `eval/results/go_no_go_v1.json` and `.md`, which **overwrites the archived original run**. To keep it, pass `--json-output` and `--markdown-output` with other paths. Never commit `.env`.
 
 Using Bouncer as an MCP proxy in front of your own stdio servers is documented in [`packages/proxy/README.md`](packages/proxy/README.md).

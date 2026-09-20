@@ -24,10 +24,16 @@ if __package__ in (None, ""):  # allow `python3 eval/run_agentdojo.py` as well a
 from bouncer_eval.agentdojo import (  # noqa: E402
     CAVEAT,
     METRIC_FAMILY,
+    PUBLIC_V2_CLEAN_QUOTAS,
+    PUBLIC_V2_EXPECTED_MANIFEST_HASHES,
+    PUBLIC_V2_MODEL,
+    PUBLIC_V2_SEED,
     ReplayTrajectory,
     eligible,
     load_trajectories,
+    public_v2_manifest_hashes,
     replay_metrics,
+    select_public_v2_sample,
     select_sample,
     to_cases,
 )
@@ -60,6 +66,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--source", type=Path, required=True, help="AgentDojo `runs` directory (or any directory of run logs)")
     parser.add_argument("--model-dir", default=None, help="model directory under --source (or a path) to restrict to one model")
     parser.add_argument("--limit", type=int, default=40, help="trajectories to sample, balanced across suites")
+    parser.add_argument(
+        "--sample-mode",
+        choices=("successful-attacks", "public-v2"),
+        default="successful-attacks",
+        help="successful-attacks is the existing balanced replay sample; public-v2 is the fixed 50-clean/50-exposed cohort",
+    )
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument("--manifest", type=Path, default=DEFAULT_MANIFEST)
     parser.add_argument("--systems", nargs="+", choices=SYSTEMS, default=["deterministic"])
@@ -92,18 +104,28 @@ def _decision_row(decision: Decision) -> dict[str, Any]:
     }
 
 
-def build_manifest(selected: list[ReplayTrajectory], *, source: Path, model_dir: str | None, limit: int, available: int, eligible_count: int) -> dict[str, Any]:
+def build_manifest(
+    selected: list[ReplayTrajectory], *, source: Path, model_dir: str | None, limit: int,
+    available: int, eligible_count: int, sample_mode: str = "successful-attacks",
+) -> dict[str, Any]:
     by_suite: dict[str, int] = {}
     for trajectory in selected:
         by_suite[trajectory.suite] = by_suite.get(trajectory.suite, 0) + 1
-    return {
-        "schema": 1,
+    public_v2 = sample_mode == "public-v2"
+    manifest = {
+        "schema": 2 if public_v2 else 1,
         "metric_family": METRIC_FAMILY,
         "source": str(source),
         "model_dir": model_dir,
         "limit": limit,
-        "selection": "deterministic sha256(id) order; balanced across suites; half successful-attack "
-        "(attack_type set, security=true) and half clean; DoS attack types and errored runs excluded",
+        "sample_mode": sample_mode,
+        "selection": (
+            "fixed public-v2 sha256 cohort: 50 clean user-task logs plus 50 exposed attack logs; "
+            "the payload must appear before a later proposed tool call; utility/security are not selection criteria"
+            if public_v2
+            else "deterministic sha256(id) order; balanced across suites; half successful-attack "
+            "(attack_type set, security=true) and half clean; DoS attack types and errored runs excluded"
+        ),
         "counts": {"available": available, "eligible": eligible_count, "selected": len(selected), "by_suite": dict(sorted(by_suite.items()))},
         "selected": [
             {
@@ -114,11 +136,22 @@ def build_manifest(selected: list[ReplayTrajectory], *, source: Path, model_dir:
                 "user_task": t.user_task,
                 "injection_task": t.injection_task,
                 "attack_type": t.attack_type,
-                "kind": "successful_attack" if t.attack_succeeded else "clean",
+                "kind": "exposed_attack" if public_v2 and t.is_attack else "successful_attack" if t.attack_succeeded else "clean",
+                "injection_exposed": t.injection_exposed,
             }
             for t in selected
         ],
     }
+    if public_v2:
+        manifest["selection_seed"] = PUBLIC_V2_SEED
+        manifest["cohort_manifest_sha256"] = public_v2_manifest_hashes(selected)
+        manifest["expected_cohort_manifest_sha256"] = PUBLIC_V2_EXPECTED_MANIFEST_HASHES
+        manifest["counts"]["by_kind"] = {
+            "clean": sum(not t.is_attack for t in selected),
+            "exposed_attack": sum(t.is_attack for t in selected),
+        }
+        manifest["counts"]["clean_quotas"] = PUBLIC_V2_CLEAN_QUOTAS
+    return manifest
 
 
 def main(argv: Sequence[str] | None = None, *, evaluator_factory: EvaluatorFactory | None = None) -> int:
@@ -133,6 +166,9 @@ def main(argv: Sequence[str] | None = None, *, evaluator_factory: EvaluatorFacto
     if args.limit < 1:
         print("--limit must be at least 1.", file=sys.stderr)
         return 2
+    if args.sample_mode == "public-v2" and args.limit != 100:
+        print("--sample-mode public-v2 requires --limit 100 (50 clean + 50 exposed attacks).", file=sys.stderr)
+        return 2
 
     try:
         root = _resolve_root(args.source, args.model_dir)
@@ -140,7 +176,11 @@ def main(argv: Sequence[str] | None = None, *, evaluator_factory: EvaluatorFacto
         print(str(exc), file=sys.stderr)
         return 2
     trajectories = load_trajectories(root)
-    sample = select_sample(trajectories, args.limit)
+    try:
+        sample = select_public_v2_sample(trajectories) if args.sample_mode == "public-v2" else select_sample(trajectories, args.limit)
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
     if not sample:
         print(f"No eligible AgentDojo run logs under {root}.", file=sys.stderr)
         return 2
@@ -181,6 +221,7 @@ def main(argv: Sequence[str] | None = None, *, evaluator_factory: EvaluatorFacto
                 "utility": trajectory.utility,
                 "security": trajectory.security,
                 "attack_succeeded": trajectory.attack_succeeded,
+                "injection_exposed": trajectory.injection_exposed,
                 "calls": calls,
             }
         )
@@ -199,7 +240,15 @@ def main(argv: Sequence[str] | None = None, *, evaluator_factory: EvaluatorFacto
         model_dir=args.model_dir,
         limit=args.limit,
         available=len(trajectories),
-        eligible_count=sum(1 for t in trajectories if eligible(t)),
+        eligible_count=(
+            sum(
+                t.model == PUBLIC_V2_MODEL and t.user_task.startswith("user_task_") and not t.error and bool(t.calls)
+                for t in trajectories
+            )
+            if args.sample_mode == "public-v2"
+            else sum(1 for t in trajectories if eligible(t))
+        ),
+        sample_mode=args.sample_mode,
     )
     for path, data in ((args.output, payload), (args.manifest, manifest)):
         path.parent.mkdir(parents=True, exist_ok=True)

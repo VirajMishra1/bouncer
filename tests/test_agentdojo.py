@@ -4,14 +4,21 @@ import io
 import json
 import tempfile
 import unittest
+from collections import Counter
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from typing import Any
 
 from bouncer_eval.agentdojo import (
+    PUBLIC_V2_ATTACK_QUOTAS,
+    PUBLIC_V2_CLEAN_QUOTAS,
+    PUBLIC_V2_EXPECTED_MANIFEST_HASHES,
+    PUBLIC_V2_MODEL,
     map_tool_call,
     parse_log,
+    public_v2_manifest_hashes,
     replay_metrics,
+    select_public_v2_sample,
     select_sample,
     to_cases,
 )
@@ -80,6 +87,34 @@ def write_corpus(root: Path, per_suite: int = 4) -> None:
             write_log(root, make_log(suite=suite, user_task=task, attack=None, injection_task=None, security=True, calls=[
                 ("get_current_day", {}, "2024-05-15"),
             ]))
+
+
+def write_public_v2_corpus(root: Path) -> None:
+    for suite, count in PUBLIC_V2_CLEAN_QUOTAS.items():
+        for index in range(count):
+            write_log(
+                root,
+                make_log(
+                    suite=suite,
+                    user_task=f"user_task_clean_{index}",
+                    attack=None,
+                    injection_task=None,
+                    model=PUBLIC_V2_MODEL,
+                ),
+            )
+    for attack, suite_counts in PUBLIC_V2_ATTACK_QUOTAS.items():
+        for suite, count in suite_counts.items():
+            for index in range(count):
+                write_log(
+                    root,
+                    make_log(
+                        suite=suite,
+                        user_task=f"user_task_{attack}_{index}",
+                        attack=attack,
+                        injection_task=f"injection_task_{index}",
+                        model=PUBLIC_V2_MODEL,
+                    ),
+                )
 
 
 class ParseLogTests(unittest.TestCase):
@@ -223,6 +258,37 @@ class SelectSampleTests(unittest.TestCase):
             sample = select_sample(load_trajectories(root), 8)
         self.assertEqual([t.attack_type for t in sample], [None])
 
+    def test_public_v2_selects_fixed_exposed_cohorts_without_changing_success_mode(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            write_public_v2_corpus(root)
+            from bouncer_eval.agentdojo import load_trajectories
+
+            trajectories = load_trajectories(root)
+            selected = select_public_v2_sample(trajectories)
+
+        self.assertEqual(len(selected), 100)
+        self.assertEqual(
+            Counter(t.suite for t in selected if not t.is_attack),
+            Counter(PUBLIC_V2_CLEAN_QUOTAS),
+        )
+        self.assertEqual(
+            Counter(t.attack_type for t in selected if t.is_attack),
+            Counter({"direct": 17, "ignore_previous": 17, "injecagent": 16}),
+        )
+        self.assertTrue(all(t.injection_exposed for t in selected if t.is_attack))
+        self.assertEqual(select_sample(trajectories, 8)[0].attack_succeeded, True)
+        hashes = public_v2_manifest_hashes(selected)
+        self.assertEqual(set(hashes), {"clean", "exposed_attack"})
+        self.assertEqual(hashes, public_v2_manifest_hashes(list(reversed(selected))))
+
+    def test_public_v2_rejects_an_attack_not_seen_before_a_later_tool_call(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            log = make_log(model=PUBLIC_V2_MODEL, attack="direct")
+            log["injections"] = {"vector": "not present in this trace"}
+            trajectory = parse_log(write_log(Path(directory), log))
+        self.assertFalse(trajectory.injection_exposed)
+
 
 class CasesAndMetricsTests(unittest.TestCase):
     def test_to_cases_use_existing_case_model_and_untrusted_context(self) -> None:
@@ -258,12 +324,27 @@ class CasesAndMetricsTests(unittest.TestCase):
         self.assertEqual(metrics["replay_attack_linked_call_intercepted"], 1)
         self.assertEqual(metrics["replay_attack_linked_call_intercept_rate"], 1.0)
         self.assertEqual(metrics["replay_attack_any_call_intercepted"], 1)
+        self.assertEqual(metrics["exposed_attack_trajectories"], 1)
+        self.assertEqual(metrics["replay_exposed_attack_first_post_exposure_blocked"], 0)
+        self.assertEqual(metrics["replay_exposed_attack_first_post_exposure_asked"], 0)
+        self.assertEqual(metrics["replay_exposed_attack_first_post_exposure_interrupted"], 0)
         self.assertEqual(metrics["clean_trajectories"], 1)
         self.assertEqual(metrics["replay_clean_trajectories_with_intercept"], 1)
         self.assertEqual(metrics["replay_clean_trajectory_false_intercept_rate"], 1.0)
         self.assertEqual(metrics["replay_clean_call_false_intercept_rate"], 0.5)
         self.assertEqual(metrics["latency_ms"]["p50"], 1.0)
         self.assertNotIn("prevented", " ".join(metrics))
+
+    def test_exposure_metrics_keep_ask_distinct_from_block(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            attack = parse_log(write_log(Path(directory), make_log()))
+        metrics = replay_metrics(
+            [attack],
+            {attack.id: [Decision("ALLOW", "", 1.0), Decision("ASK", "", 1.0), Decision("ALLOW", "", 1.0)]},
+        )
+        self.assertEqual(metrics["replay_exposed_attack_first_post_exposure_blocked"], 0)
+        self.assertEqual(metrics["replay_exposed_attack_first_post_exposure_asked"], 1)
+        self.assertEqual(metrics["replay_exposed_attack_first_post_exposure_interrupted"], 1)
 
     def test_invalid_decisions_fail_closed_and_are_counted(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -312,6 +393,28 @@ class CliTests(unittest.TestCase):
         self.assertEqual(len(manifest_payload["selected"]), 8)
         self.assertEqual(manifest_payload["limit"], 8)
         self.assertIn("sha256", manifest_payload["selected"][0])
+
+    def test_public_v2_cli_writes_exposure_manifest(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            write_public_v2_corpus(root / "runs")
+            code, out, manifest, _ = self._run(
+                root,
+                "--sample-mode",
+                "public-v2",
+                "--limit",
+                "100",
+                "--systems",
+                "deterministic",
+            )
+            payload = json.loads(out.read_text(encoding="utf-8"))
+            manifest_payload = json.loads(manifest.read_text(encoding="utf-8"))
+        self.assertEqual(code, 0)
+        self.assertEqual(len(payload["trajectories"]), 100)
+        self.assertEqual(manifest_payload["sample_mode"], "public-v2")
+        self.assertEqual(manifest_payload["counts"]["by_kind"], {"clean": 50, "exposed_attack": 50})
+        self.assertEqual(set(manifest_payload["cohort_manifest_sha256"]), {"clean", "exposed_attack"})
+        self.assertEqual(manifest_payload["expected_cohort_manifest_sha256"], PUBLIC_V2_EXPECTED_MANIFEST_HASHES)
 
     def test_output_is_deterministic(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
