@@ -16,7 +16,7 @@ def _load(name: str) -> dict:
 
 class FailuresReportTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.trajectory = _load("trajectory_deterministic.json")
+        self.trajectory = _load("trajectory_offline.json")
         self.per_call = _load("go_no_go_noleak.json")
         self.archived = _load("go_no_go_v1.json")
         self.text = run_eval.build_failures_markdown(self.trajectory, self.per_call, self.archived)
@@ -26,9 +26,15 @@ class FailuresReportTests(unittest.TestCase):
         self.assertIn("per-call diagnostic", self.text.lower())
         self.assertIn("do not cite", self.text)
 
-    def test_saturated_benchmark_is_called_out(self) -> None:
-        self.assertIn("cannot yet separate them", self.text)
-        self.assertIn("not a strength claim", self.text)
+    def test_small_set_and_label_reading_baseline_are_called_out(self) -> None:
+        self.assertIn("treat differences between defended systems as directional", self.text)
+        self.assertIn("curator labels", self.text)
+        self.assertIn("No Nemotron or hybrid trajectory run is included", self.text)
+
+    def test_every_offline_system_is_reported_with_its_losses(self) -> None:
+        for name in ("deterministic", "text-rules", "no-defense"):
+            self.assertIn(f"**{name}:**", self.text)
+        self.assertIn("SECURITY LOSS `uxe-attack-shell-retry`", self.text)
 
     def test_per_call_failures_are_classified(self) -> None:
         self.assertIn("benign blocked (utility loss)", self.text)
@@ -54,8 +60,17 @@ class FailuresReportTests(unittest.TestCase):
         bad["systems"]["deterministic"]["summary"]["attacker_objective_prevented"] -= 1
         text = run_eval.build_failures_markdown(bad, self.per_call, None)
         self.assertIn("SECURITY LOSS", text)
-        self.assertNotIn("cannot yet separate them", text)
         self.assertNotIn("Original per-call run", text)
+
+    def test_hosted_results_are_merged_only_for_the_same_dataset(self) -> None:
+        live = json.loads(json.dumps(self.trajectory))
+        live["systems"] = {"bouncer-super": live["systems"]["deterministic"]}
+        merged = run_eval.merge_trajectories(self.trajectory, live)
+        self.assertIn("bouncer-super", merged["systems"])
+        self.assertIn("deterministic", merged["systems"])
+        self.assertNotIn("bouncer-super", self.trajectory["systems"])
+        text = run_eval.build_failures_markdown(merged, self.per_call, None)
+        self.assertNotIn("No Nemotron or hybrid trajectory run is included", text)
 
     def test_long_reasons_are_trimmed_and_pipes_escaped(self) -> None:
         self.assertLessEqual(len(run_eval._clean("x" * 500)), run_eval.REASON_LIMIT)
@@ -72,8 +87,8 @@ class CommandTests(unittest.TestCase):
             dashboard = Path(tmp) / "dashboard" / "index.html"
             self.assertEqual(run_eval.main(["--results-dir", str(results), "--dashboard", str(dashboard)]), 0)
             for name in (
-                "trajectory_deterministic.json",
-                "trajectory_deterministic.md",
+                "trajectory_offline.json",
+                "trajectory_offline.md",
                 "failures.md",
                 "pareto.svg",
                 "pareto_trajectory.svg",

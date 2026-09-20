@@ -81,7 +81,7 @@ class DashboardTests(unittest.TestCase):
         page = self.build()
         svg = page[page.index("<svg class=\"scatter\"") : page.index("</svg>", page.index("<svg class=\"scatter\""))]
         self.assertEqual(svg.count('class="pt pc"'), 2)  # deterministic + nemotron-super per-call
-        self.assertEqual(svg.count('class="pt e2e"'), 1)
+        self.assertEqual(svg.count('class="pt e2e"'), 3)  # deterministic, text-rules, no-defense (one dot each)
         self.assertNotIn("nemotron-lightning", svg)
         self.assertIn("<title", svg)
         self.assertIn("<desc", svg)

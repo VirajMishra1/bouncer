@@ -7,9 +7,22 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
+import os
+import sys
+import time
+
+from .baselines import HybridTextEvaluator, NoDefenseEvaluator, TextRulesEvaluator
+from .bouncer import BouncerEvaluator
 from .deterministic import DeterministicEvaluator
+from .models import Case, Decision
+from .nemotron import NemotronEvaluator
 from .report import write_trajectory_report
-from .trajectories import load_trajectories, run_trajectories, summarize_trajectories
+from .trajectories import (
+    compare_trajectory_outcomes,
+    load_trajectories,
+    run_trajectories,
+    summarize_trajectories,
+)
 
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -17,6 +30,44 @@ DEFAULT_DATASET = ROOT / "eval/datasets/trajectory_v1.jsonl"
 DEFAULT_FREEZE_MANIFEST = ROOT / "eval/datasets/trajectory_v1.freeze.json"
 DEFAULT_JSON = ROOT / "eval/results/trajectory_deterministic.json"
 DEFAULT_MARKDOWN = ROOT / "eval/results/trajectory_deterministic.md"
+
+
+SUPER_MODEL = "nvidia/nemotron-3-super-120b-a12b"
+OFFLINE_SYSTEMS = ("deterministic", "text-rules", "no-defense")
+LIVE_SYSTEMS = ("super", "bouncer", "bouncer-text")
+SYSTEMS = OFFLINE_SYSTEMS + LIVE_SYSTEMS
+# Output names. `deterministic` decides from curator labels the model never sees (an oracle-label
+# rules baseline); `text-rules` decides from text only and is the realistic rules baseline.
+OUTPUT_NAMES = {"super": "nemotron-super", "bouncer": "bouncer-super", "bouncer-text": "bouncer-text-super"}
+
+
+class Throttled:
+    """Space hosted-API requests so a long run stays inside the free tier's rate limit."""
+
+    def __init__(self, evaluator: object, min_interval: float) -> None:
+        self._evaluator, self._interval, self._last = evaluator, max(0.0, min_interval), 0.0
+
+    def evaluate(self, case: Case) -> Decision:
+        wait = self._interval - (time.monotonic() - self._last)
+        if wait > 0:
+            time.sleep(wait)
+        self._last = time.monotonic()
+        return self._evaluator.evaluate(case)  # type: ignore[attr-defined]
+
+
+def _build_evaluator(system: str, api_key: str, min_interval: float) -> object:
+    if system == "deterministic":
+        return DeterministicEvaluator()
+    if system == "text-rules":
+        return TextRulesEvaluator()
+    if system == "no-defense":
+        return NoDefenseEvaluator()
+    model = NemotronEvaluator(SUPER_MODEL, api_key)
+    if system == "bouncer":
+        return Throttled(BouncerEvaluator(model), min_interval)
+    if system == "bouncer-text":
+        return Throttled(HybridTextEvaluator(model), min_interval)
+    return Throttled(model, min_interval)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -27,6 +78,13 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--freeze-manifest", type=Path, default=DEFAULT_FREEZE_MANIFEST)
     parser.add_argument("--json-output", type=Path, default=DEFAULT_JSON)
     parser.add_argument("--markdown-output", type=Path, default=DEFAULT_MARKDOWN)
+    parser.add_argument(
+        "--systems", nargs="+", choices=SYSTEMS, default=["deterministic"],
+        help="offline: deterministic (oracle labels), text-rules, no-defense. "
+        "hosted (need NVIDIA_API_KEY, human-triggered): super, bouncer, bouncer-text.",
+    )
+    parser.add_argument("--baseline", default=None, help="add paired win/loss + bootstrap CI of every other system vs this one")
+    parser.add_argument("--min-interval", type=float, default=1.6, help="seconds between hosted-API requests")
     return parser
 
 
@@ -43,23 +101,41 @@ def main(argv: Sequence[str] | None = None) -> int:
         families={trajectory.family for trajectory in trajectories},
     )
 
-    evaluator = DeterministicEvaluator()
-    outcomes = run_trajectories(trajectories, evaluator)
-    summaries = {"deterministic": summarize_trajectories(trajectories, outcomes)}
+    systems = list(dict.fromkeys(args.systems))
+    api_key = os.environ.get("NVIDIA_API_KEY", "")
+    if any(system in LIVE_SYSTEMS for system in systems) and not api_key:
+        print("NVIDIA_API_KEY is required for the hosted systems (super, bouncer, bouncer-text).", file=sys.stderr)
+        return 2
+    all_outcomes = {}
+    for system in systems:
+        name = OUTPUT_NAMES.get(system, system)
+        if system in LIVE_SYSTEMS:
+            print(f"Running {name} on {len(trajectories)} trajectories (hosted API)...")
+        all_outcomes[name] = run_trajectories(trajectories, _build_evaluator(system, api_key, args.min_interval))
+    summaries = {name: summarize_trajectories(trajectories, outcomes) for name, outcomes in all_outcomes.items()}
+    comparisons = {}
+    if args.baseline is not None:
+        baseline = OUTPUT_NAMES.get(args.baseline, args.baseline)
+        if baseline not in all_outcomes:
+            raise ValueError(f"--baseline {args.baseline!r} was not among the systems run")
+        for name, outcomes in all_outcomes.items():
+            if name != baseline:
+                comparisons[f"{name} vs {baseline}"] = compare_trajectory_outcomes(trajectories, outcomes, all_outcomes[baseline])
     write_trajectory_report(
         trajectories,
-        {"deterministic": outcomes},
+        all_outcomes,
         summaries,
         args.json_output,
         args.markdown_output,
         dataset_hash=dataset_hash,
+        comparisons=comparisons,
     )
-    summary = summaries["deterministic"]
-    print(
-        "deterministic: "
-        f"{summary['attacker_objective_prevented']}/{summary['attack_total']} attacks prevented; "
-        f"{summary['benign_completed']}/{summary['benign_total']} benign tasks completed"
-    )
+    for name, summary in summaries.items():
+        print(
+            f"{name}: "
+            f"{summary['attacker_objective_prevented']}/{summary['attack_total']} attacks prevented; "
+            f"{summary['benign_completed']}/{summary['benign_total']} benign tasks completed"
+        )
     print(f"Reports: {args.json_output} and {args.markdown_output}")
     return 0
 

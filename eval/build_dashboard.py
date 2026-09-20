@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_TRAJECTORY = ROOT / "eval" / "results" / "trajectory_deterministic.json"
+DEFAULT_TRAJECTORY = ROOT / "eval" / "results" / "trajectory_offline.json"
 DEFAULT_PER_CALL = ROOT / "eval" / "results" / "go_no_go_noleak.json"
 DEFAULT_ARCHIVED = ROOT / "eval" / "results" / "go_no_go_v1.json"
 DEFAULT_OUTPUT = ROOT / "dashboard" / "index.html"

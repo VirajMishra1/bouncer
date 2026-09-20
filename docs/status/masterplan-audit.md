@@ -23,10 +23,10 @@ Every row was checked against code, tests or generated artifacts on branch `code
 | Plan item | Status | Evidence / gap |
 |---|---|---|
 | Per-call diagnostic on 48 frozen cases | ✅ | Leak-fixed: Super 93.8% acc, 100% attacks blocked, 87.5% benign allowed vs rules 91.7 / 100 / 83.3. Labelled diagnostic. |
-| End-to-end trajectory scoring | 🟡 | Implemented and frozen (12 episodes, 6 families). Only the rules baseline was run; it scores 6/6 and 6/6, so the set cannot separate systems. |
-| Baseline fairness | 🟡 | The rules baseline reads curator labels (`data_class`, `source`, `destructive`, `operation_in_goal`) that the model never sees. Its perfect score is label-driven. A text-only baseline is planned. |
-| Hybrid / Nemotron trajectory run | 🔑 | Needs `NVIDIA_API_KEY` and your OK to spend hosted-API quota. |
-| No-defense baseline in the results | ⬜ | Trivial to add offline. |
+| End-to-end trajectory scoring | 🟡 | Implemented and frozen (12 episodes, 6 families). Offline: no-defense 0/6 attacks prevented, text-only rules 5/6, label-reading rules 6/6; all 6/6 benign. Separates defended from undefended; too small to separate defended systems. |
+| Baseline fairness | ✅ | The original rules baseline reads curator labels the model never sees, so it is now reported as an upper bound (`deterministic`). A realistic text-only baseline (`text-rules`, `bouncer_eval/baselines.py`) and a label-free hybrid (`bouncer-text`) were added. |
+| Hybrid / Nemotron trajectory run | 🔑 | Ready to run: `python3 -m bouncer_eval.trajectory_cli --systems super bouncer bouncer-text --baseline text-rules --json-output eval/results/trajectory_live.json --markdown-output eval/results/trajectory_live.md` with `NVIDIA_API_KEY` set. `python3 -m eval.run_eval` then merges it in. Needs your OK to spend hosted-API quota. |
+| No-defense baseline in the results | ✅ | `no-defense` in `trajectory_offline.json` (0/6 prevented). |
 | Post-freeze adaptive red-team set | ⬜ | Required by the plan; must be written and labelled as post-freeze. |
 | Ablations (reasoning on/off, structured vs freeform) | ⬜ | Need model runs. |
 | NeMo Guardrails baseline | ⬜ 🔑 | The "~96% false block" is a reported figure and has never been reproduced here. No comparison has been run, so no claim can be made. |

@@ -2,10 +2,11 @@
 
     python3 -m eval.run_eval
 
-It runs the end-to-end trajectory benchmark for the deterministic baseline, then
-regenerates, from result files already in the repo:
+It runs the end-to-end trajectory benchmark for the offline systems (no defense, a rules baseline
+that reads curator labels, and a rules baseline that reads text only), merges in any hosted-model
+run saved as eval/results/trajectory_live.json, then regenerates, from result files already in the repo:
 
-  eval/results/trajectory_deterministic.{json,md}   end-to-end evidence
+  eval/results/trajectory_offline.{json,md}         end-to-end evidence (offline systems)
   eval/results/failures.md                          plain-language failures and limits
   eval/results/pareto.svg                           per-call diagnostic chart
   eval/results/pareto_trajectory.svg                end-to-end chart
@@ -31,6 +32,7 @@ if __package__ in (None, ""):  # allow `python3 eval/run_eval.py` as well as `-m
 from bouncer_eval import trajectory_cli  # noqa: E402
 from eval import build_dashboard, plot_pareto  # noqa: E402
 
+OFFLINE_SYSTEMS = ("deterministic", "text-rules", "no-defense")
 RESULTS = ROOT / "eval/results"
 DASHBOARD = ROOT / "dashboard/index.html"
 REASON_LIMIT = 200
@@ -57,15 +59,23 @@ def main(argv: Sequence[str] | None = None) -> int:
     results: Path = args.results_dir
     results.mkdir(parents=True, exist_ok=True)
 
-    trajectory_json = results / "trajectory_deterministic.json"
+    trajectory_json = results / "trajectory_offline.json"
     rc = trajectory_cli.main([
+        "--systems", *OFFLINE_SYSTEMS,
+        "--baseline", "text-rules",
         "--json-output", str(trajectory_json),
-        "--markdown-output", str(results / "trajectory_deterministic.md"),
+        "--markdown-output", str(results / "trajectory_offline.md"),
     ])
     if rc != 0:
         return rc
 
     trajectory = _load(trajectory_json)
+    live = _load(results / "trajectory_live.json", required=False)
+    if live is not None:
+        if live.get("dataset_sha256") == trajectory.get("dataset_sha256"):
+            trajectory = merge_trajectories(trajectory, live)
+        else:
+            print("Ignoring trajectory_live.json: it was run on a different dataset.", file=sys.stderr)
     per_call = _load(results / "go_no_go_noleak.json")
     archived = _load(results / "go_no_go_v1.json", required=False)
 
@@ -76,13 +86,21 @@ def main(argv: Sequence[str] | None = None) -> int:
         summaries, labels = plot_pareto.summaries_from_payload(source)
         (results / name).write_text(plot_pareto.build_svg(summaries, labels), encoding="utf-8")
 
-    outputs = [trajectory_json.name, "trajectory_deterministic.md", failures_path.name, "pareto.svg", "pareto_trajectory.svg"]
+    outputs = [trajectory_json.name, "trajectory_offline.md", failures_path.name, "pareto.svg", "pareto_trajectory.svg"]
     if not args.skip_dashboard:
         args.dashboard.parent.mkdir(parents=True, exist_ok=True)
         build_dashboard.build_dashboard(trajectory, per_call, archived, args.dashboard)
         outputs.append(str(args.dashboard))
     print("Wrote: " + ", ".join(outputs))
     return 0
+
+
+def merge_trajectories(offline: dict[str, Any], live: dict[str, Any]) -> dict[str, Any]:
+    """Union of systems and paired comparisons from two runs of the same frozen dataset."""
+    merged = json.loads(json.dumps(offline))
+    merged["systems"].update(live.get("systems", {}))
+    merged["paired_comparisons"] = {**offline.get("paired_comparisons", {}), **live.get("paired_comparisons", {})}
+    return merged
 
 
 def _load(path: Path, *, required: bool = True) -> dict[str, Any] | None:
@@ -127,44 +145,37 @@ def build_failures_markdown(
 
 def _trajectory_section(trajectory: dict[str, Any]) -> list[str]:
     dataset = trajectory.get("dataset", {})
+    systems = sorted(trajectory.get("systems", {}))
     lines: list[str] = []
-    any_failure = False
-    saturated = True
-    for name, system in sorted(trajectory.get("systems", {}).items()):
+    for name in systems:
+        system = trajectory["systems"][name]
         summary = system["summary"]
         lines.append(
             f"**{name}:** {summary['attacker_objective_prevented']}/{summary['attack_total']} attacker objectives "
             f"prevented, {summary['benign_completed']}/{summary['benign_total']} benign tasks completed, "
-            f"{summary['false_blocks']} false blocks, {summary['invalid_total']} invalid decisions."
-        )
-        saturated &= (
-            summary["attacker_objective_prevented"] == summary["attack_total"]
-            and summary["benign_completed"] == summary["benign_total"]
+            f"{summary['false_blocks']} false blocks, {summary['ask_total']} asks, {summary['invalid_total']} invalid."
         )
         for outcome in system["outcomes"]:
             if outcome.get("attack") and outcome.get("harmful_objective_achieved"):
-                any_failure = True
                 lines.append(f"- SECURITY LOSS `{outcome['trajectory_id']}` ({outcome['family']}): a harmful action executed.")
             elif not outcome.get("attack") and not outcome.get("benign_completed"):
-                any_failure = True
                 lines.append(f"- UTILITY LOSS `{outcome['trajectory_id']}` ({outcome['family']}): a required benign step did not complete.")
-    if not any_failure:
-        lines += ["", "No episode failed. **That is not a strength claim.**"]
-    systems = sorted(trajectory.get("systems", {}))
+        lines.append("")
     lines += [
-        "",
         f"The set is {dataset.get('trajectories', '?')} episodes across {len(dataset.get('families', []))} families "
-        f"(systems run here: {', '.join(systems) or 'none'}).",
+        f"(systems run here: {', '.join(systems) or 'none'}). With this few episodes one episode moves a rate by "
+        "several points; treat differences between defended systems as directional.",
     ]
-    if saturated:
+    if "deterministic" in systems:
         lines.append(
-            "Every system run so far scores perfectly on it, so it cannot yet separate them: a benchmark that "
-            "cannot fail cannot show an advantage."
+            "`deterministic` decides from curator labels (`data_class`, `source`, `destructive`, `operation_in_goal`) "
+            "that a real deployment would have to detect and that the model is never shown. Its score is an "
+            "upper bound for rules with perfect detectors, not a realistic baseline. `text-rules` sees only the goal, "
+            "action text, earlier tool results and the typed destination."
         )
-    if "deterministic" in systems and len(systems) == 1:
+    if not any("nemotron" in n or "bouncer" in n for n in systems):
         lines.append(
-            "Only the deterministic baseline was run. A hybrid or Nemotron trajectory run needs the hosted API "
-            "and has not been done."
+            "No Nemotron or hybrid trajectory run is included. It needs the hosted API and has not been done."
         )
     return lines
 
