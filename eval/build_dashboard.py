@@ -395,6 +395,15 @@ def render_tier_a(traj: dict[str, Any]) -> str:
             "No Nemotron or hybrid trajectory run is included (hosted API required)."
         )
 
+    if "deterministic" in names:
+        scope += (
+            " <strong>Read the baselines carefully:</strong> <code>deterministic</code> decides from curator labels "
+            "(<code>data_class</code>, <code>source</code>, <code>destructive</code>, <code>operation_in_goal</code>) that a real "
+            "deployment would have to detect and that the model is never shown, so its score is an upper bound for rules, not a fair "
+            "competitor. <code>text-rules</code> sees only the goal, the action text, earlier tool results and the typed destination; "
+            "<code>no-defense</code> allows everything."
+        )
+
     out.append(
         '<section id="tier-a" class="tier tier-a" aria-labelledby="h-a">'
         f'<p class="tier-tag tag-a"><span class="tag-k">Tier A</span> {esc(TIER_A_LABEL)}</p>'

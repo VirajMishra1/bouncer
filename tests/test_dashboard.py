@@ -90,6 +90,8 @@ class DashboardTests(unittest.TestCase):
 
     def test_honesty_notes_present(self) -> None:
         page = self.build()
+        self.assertIn("decides from curator labels", page)
+        self.assertIn("upper bound for rules, not a fair", page)
         self.assertIn("cannot separate systems yet", page)
         self.assertIn("12 episodes = 6 attack/benign pairs, one pair per attack family", page)
         self.assertIn("not</strong> proof that Bouncer beats anything", page)
