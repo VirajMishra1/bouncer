@@ -44,7 +44,7 @@ Every row was checked against code, tests or generated artifacts on branch `code
 | Plan item | Status | Notes |
 |---|---|---|
 | README, architecture diagram, 3-minute pitch script | ✅ | Kept honest; updated tonight. |
-| Slide deck | ⬜ | |
+| Slide deck | 🟡 | Outline with sources and a do-not-say list: `docs/story/deck-outline.md`. Slides not built. |
 | Final recorded video, Devpost write-up | ⬜ | |
 | Public repo | ⬜ 🔑 | The GitHub repo is currently **private**. |
 | Submit to Nemotron + Most Fundable | ⬜ 🔑 | Human-only. |
