@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Wire Bouncer live view into Claude Code (reversible).
+"""Wire Bouncer Live into Claude Code for ALL your sessions (reversible).
+
+Cloning this repo already enables it for sessions opened in the repo (see .claude/settings.json).
+Use this only if you want the animation for every project on your machine.
 
   python3 install_hooks.py             show exactly what would change (dry run)
   python3 install_hooks.py --apply     back up settings.json, then add the hooks
@@ -19,7 +22,7 @@ import sys
 import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-MARK = os.path.join("live", "hook.py")  # how we recognise our own entries
+MARKS = (os.path.join("live", "hook.py"), "bouncer-pub/hook.py")   # how we recognise our own entries (current + legacy)
 EVENTS = ["UserPromptSubmit", "PreToolUse", "PostToolUse", "Stop"]
 
 
@@ -30,7 +33,7 @@ def entry(enforce):
 
 
 def ours(group):
-    return any(MARK in h.get("command", "") for h in group.get("hooks", []))
+    return any(m in h.get("command", "") for m in MARKS for h in group.get("hooks", []))
 
 
 def merge(settings, enforce):

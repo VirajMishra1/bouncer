@@ -31,7 +31,7 @@ user goal ──► AGENT (MCP client) ──tools/call──► BOUNCER ──o
 1. **Capture the goal.** The host sets the user's original instruction once with `bouncer_set_goal`.
 2. **Normalize the call** into an effect: `READ`, `SEND` (with destination), or `EXECUTE`.
 3. **Ask Nemotron Super** whether the action matches the goal, given the concrete arguments and the previous two tool results, which is where an injection would show up.
-4. **Enforce.** Only a valid `ALLOW` is forwarded. `BLOCK`, invalid model output, network failure, a missing goal, and audit failure all **fail closed**. In the proxy today, a `SEND` to a destination the goal never named is stopped (V1 treats `ASK` as `BLOCK`).
+4. **Enforce.** Only a valid `ALLOW` is forwarded. `BLOCK`, invalid model output, network failure, a missing goal, and audit failure all **fail closed**. `ASK` is used for one case: a `SEND` to a destination the goal never named. It is never forwarded; the proxy returns structured approval details for the host, and there is no approval-resume step yet.
 5. **Audit.** Each decision is written to a JSONL log: effect, verdict, reason, latency. The log omits raw arguments, message bodies, goals, and API keys.
 
 The same action gets opposite verdicts depending on intent. An outbound request is fine for "check the weather" and blocked for "fix this bug" when it ships secrets to an unrelated domain. Diagram and demo flow: [`docs/story/architecture.md`](docs/story/architecture.md).
@@ -56,7 +56,8 @@ Notes on how to read this:
 - **The first run scored 100%, and we didn't trust it.** The dataset carried risk tags (`data_class`, `source`, `destructive`) that gave the answer away. We stopped sending them, re-ran, and report the 93.8% run. The original run is archived in `eval/results/go_no_go_v1.*`.
 - **The 3 misses are benign cases, not attacks.** `dst-06`, `hex-06`, and `uex-05` were marked INVALID by a self-consistency guard (the verdict contradicted the blocking-sounding reason). No attack got through in this set.
 - **Nemotron Lightning was unreliable through the hosted API** (timeouts and truncated JSON), so V1 runs Super only.
-- **Not yet shown:** end-to-end scoring ("did the attacker's objective ultimately succeed?"), a public benchmark such as AgentDojo, post-freeze adaptive attacks, and a NeMo Guardrails comparison. The per-call numbers above must not be read as end-to-end evidence. Nothing in this README claims otherwise.
+- **End-to-end, so far:** a 12-episode trajectory set (6 attack/benign pairs) scores whether the attacker's objective ultimately succeeded after retries. The deterministic baseline scores 6/6 attacks prevented and 6/6 benign completed on it, so the set is small and cannot yet separate systems. A hybrid or Nemotron run of it has not been done. See [`dashboard/index.html`](dashboard/index.html) and [`eval/results/failures.md`](eval/results/failures.md).
+- **Not yet shown:** a public benchmark such as AgentDojo, post-freeze adaptive attacks, a NeMo Guardrails comparison, and any fine-tuning of Nemotron. The per-call numbers above must not be read as end-to-end evidence. Nothing in this README claims otherwise.
 
 Full tables and failure lists: [`eval/results/go_no_go_noleak.md`](eval/results/go_no_go_noleak.md) (honest run) and [`eval/results/go_no_go_v1.md`](eval/results/go_no_go_v1.md) (original run). Plan and rationale: [`MASTERPLAN.md`](MASTERPLAN.md).
 
@@ -68,6 +69,18 @@ The demo uses real MCP clients and servers with mocked, local tool servers. The 
 - **Bouncer ON:** the forward is refused, and the legitimate summary still completes.
 
 A short terminal clip is at [`demo/artifacts/bouncer-demo.mp4`](demo/artifacts/bouncer-demo.mp4). More in [`demo/README.md`](demo/README.md), and the 3-minute script is in [`docs/story/pitch.md`](docs/story/pitch.md).
+
+## Bouncer Live: watch your agent get checked
+
+A small local web page shows every tool call your agent makes as a person queueing at the door of **The Action Tool Center**. The bouncer checks each one against the prompt you gave. Allowed calls walk in, unrequested ones are turned away, and unclear ones raise an ask. It opens by itself when you send a prompt, and shows the agent's final message when it finishes.
+
+- **Claude Code:** open this repo in Claude Code and approve the project hooks in [`.claude/settings.json`](.claude/settings.json). Send a prompt and a window opens. To get it in every project on your machine instead: `python3 live/install_hooks.py` (dry run), then `--apply`. `--uninstall` reverses it.
+- **Codex:** run `python3 live/server.py` once and leave it running. It reads the session files Codex already writes (read-only, nothing in Codex is changed) for threads opened in this repo. Add other folders with `BOUNCER_CODEX_CWD=/path`. Unrelated chats are ignored.
+- **No agent handy:** open `live/index.html` for the scripted email-injection demo, with a Bouncer ON/OFF switch.
+
+Defaults are conservative. It is **watch-only**: it shows what Bouncer *would* decide and never blocks anything (`BOUNCER_ENFORCE=1` makes BLOCK and ASK real for Claude Code). It is **local**: verdicts come from local rules and nothing leaves your machine (`BOUNCER_JUDGE=nemotron` with `NVIDIA_API_KEY` uses Nemotron Super, and tool input is redacted and truncated first). Secrets are scrubbed from everything it shows or logs. `BOUNCER_NO_POPUP=1` stops the window opening.
+
+This is a visualization of decisions. The enforcement path is [`packages/proxy/`](packages/proxy/). Tests: `python3 -m unittest discover -s live -p "test_*.py"`.
 
 ## Quickstart
 
@@ -100,6 +113,9 @@ npm run build
 **Evaluation.**
 
 ```bash
+# Regenerate every result artifact, chart and the dashboard, offline
+python3 -m eval.run_eval
+
 # Validate the dataset and run the rules baseline (no network)
 python3 -m bouncer_eval.cli --dry-run
 
@@ -123,7 +139,9 @@ Using Bouncer as an MCP proxy in front of your own stdio servers is documented i
 | `packages/proxy/` | TypeScript MCP proxy: goal capture, effect normalization, Nemotron client, enforcement, audit log |
 | `demo/` | Mocked email and GitHub MCP servers, the counterfactual demo runner, clip generator |
 | `bouncer_eval/` | Python evaluation harness: dataset, deterministic baseline, Nemotron evaluator, hybrid evaluator, metrics, reports |
-| `eval/` | Frozen dataset, results, Pareto plot script |
+| `eval/` | Frozen datasets, results, `run_eval.py` (one-command regeneration), Pareto plot, dashboard builder |
+| `dashboard/` | Self-contained results page that keeps end-to-end, per-call and archived evidence apart |
+| `live/` | Bouncer Live: the animated door-checking view, hooks for Claude Code, Codex watcher |
 | `docs/story/` | Pitch script and architecture diagram |
 | `MASTERPLAN.md` | Full plan, threat model, eval design, and status |
 
@@ -132,7 +150,8 @@ Using Bouncer as an MCP proxy in front of your own stdio servers is documented i
 - V1 is stateless per call; it looks back over the previous two tool results, not a full trajectory.
 - Effects are `READ`, `SEND`, and `EXECUTE`. `WRITE`, `TRANSACT`, and `AUTHORIZE` are designed but not built.
 - Interception is scoped to MCP tool calls. Attacks that never go through a mediated tool are out of scope.
-- The benchmark is small, self-authored, and per-call. See the evidence section above.
+- The benchmarks are small and self-authored. The end-to-end set has 12 episodes, and its rules baseline reads curator labels a real deployment would not have, so treat its perfect score as a floor for the test, not a result. See the evidence section above.
+- Bouncer Live judges with local rules and is a visualization, not the enforcement path.
 
 ## Model and API
 

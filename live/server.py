@@ -17,22 +17,28 @@ import subprocess
 import sys
 import threading
 import time
+import webbrowser
+from concurrent.futures import ThreadPoolExecutor
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
+import codex_watch
 import judge as judge_mod
 
 ROOT = Path(__file__).parent
 PORT = int(os.environ.get("BOUNCER_PORT", "7777"))
 URL = f"http://127.0.0.1:{PORT}/?live=1"
-LOG = Path(os.environ.get("BOUNCER_LOG", Path.home() / ".bouncer-pub" / "log.jsonl"))
+LOG = Path(os.environ.get("BOUNCER_LOG", Path.home() / ".bouncer-live" / "log.jsonl"))
 LOG.parent.mkdir(parents=True, exist_ok=True)
 
 lock = threading.Lock()
 clients = set()            # queue.Queue per connected page
 events = []                # (id, json_str) since the last prompt
 next_id = 1
-state = {"goal": "", "session": None, "seq": 0, "recent": [], "last_popup": 0.0}
+state = {"last_popup": 0.0}
+sessions = {}              # session id -> {"goal","seq","recent"}
+seen = {}                  # duplicate suppression: the same hook can be registered twice (user + project)
+judge_pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="judge")   # one worker keeps events in order
 
 
 def broadcast(evt):
@@ -64,7 +70,9 @@ def popup():
     state["last_popup"] = time.time()
     chrome = "/Applications/Google Chrome.app"
     try:
-        if os.path.exists(chrome):
+        if sys.platform != "darwin":
+            webbrowser.open(URL)
+        elif os.path.exists(chrome):
             subprocess.Popen(["open", "-na", "Google Chrome", "--args", f"--app={URL}", "--window-size=1320,900"],
                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         else:
@@ -93,36 +101,63 @@ def last_assistant_text(path):
         return ""
 
 
-def handle_hook(p):
+def _duplicate(p):
+    """True when this exact event was already handled in the last 2 minutes."""
+    key = (p.get("session_id"), p.get("hook_event_name"), p.get("tool_use_id") or (p.get("prompt") or p.get("transcript_path") or "")[:200])
+    now = time.time()
+    for k in [k for k, t in seen.items() if now - t > 120]:
+        del seen[k]
+    if key in seen:
+        return True
+    seen[key] = now
+    return False
+
+
+def _decide(goal, tool, inp, recent, meta):
+    """Judge one call and broadcast it. Runs inline (enforce mode) or on the judge worker (watch-only)."""
+    try:
+        d = judge_mod.judge(goal, tool, inp, recent)
+    except Exception as e:      # a broken judge must not kill the server; show it as an unresolved ASK
+        d = {"verdict": "ASK", "effect": "EXECUTE", "intent_relationship": "ambiguous", "intent_match": 0.0,
+             "reason": f"The judge failed ({type(e).__name__}); nothing was decided.",
+             "evidence": {"user_goal": goal, "proposed_action": f"{tool}()", "mismatch": None}}
+    d.update(tool=tool, summary=judge_mod.summarize(tool, inp), table=judge_mod.table_for(tool, inp),
+             args=inp if len(json.dumps(inp)) < 600 else {"note": "large input"}, ts=time.time(), goal=goal, **meta)
+    broadcast({"type": "call", "decision": d})
+    return d
+
+
+def handle_hook(p, sync=False):
     ev = p.get("hook_event_name") or p.get("event")
-    sid = p.get("session_id")
+    sid = p.get("session_id") or "?"
+    agent = p.get("agent") or "claude"
+    if ev in ("UserPromptSubmit", "PreToolUse", "PostToolUse", "Stop") and _duplicate(p):
+        return {"ok": True, "duplicate": True}
+    st = sessions.setdefault(sid, {"goal": "", "seq": 0, "recent": []})
     out = {"ok": True}
     if ev == "UserPromptSubmit":
-        goal = (p.get("prompt") or "").strip()
-        state.update(goal=goal, session=sid, seq=0, recent=[])
+        goal = judge_mod.redact((p.get("prompt") or "").strip())
+        st.update(goal=goal, seq=0, recent=[])
         had_page = bool(clients)
-        broadcast({"type": "prompt", "goal": goal, "session": sid, "ts": time.time()})
+        broadcast({"type": "prompt", "goal": goal, "session": sid, "agent": agent, "ts": time.time()})
         if not had_page:
             popup()
     elif ev == "PreToolUse":
         tool = p.get("tool_name", "tool")
-        inp = p.get("tool_input") or {}
-        state["seq"] += 1
-        d = judge_mod.judge(state["goal"], tool, inp, state["recent"])
-        d.update(seq=state["seq"], tool=tool, summary=judge_mod.summarize(tool, inp),
-                 table=judge_mod.table_for(tool, inp), args=inp if len(json.dumps(inp)) < 600 else {"note": "large input"},
-                 tool_use_id=p.get("tool_use_id"), ts=time.time(), enforce=bool(p.get("bouncer_enforce")))
-        state["recent"] = (state["recent"] + [f"{tool}:{d['summary']}"])[-2:]
-        if not clients:
-            popup()
-        broadcast({"type": "call", "decision": d})
-        out["decision"] = d
+        inp = judge_mod.redact(p.get("tool_input") or {})
+        st["seq"] += 1
+        recent = list(st["recent"])
+        st["recent"] = (st["recent"] + [f"{tool}:{judge_mod.summarize(tool, inp)}"])[-2:]
+        meta = dict(seq=st["seq"], agent=agent, session=sid, tool_use_id=p.get("tool_use_id"), enforce=bool(p.get("bouncer_enforce")))
+        if meta["enforce"] or sync:
+            out["decision"] = _decide(st["goal"], tool, inp, recent, meta)      # the agent waits for a real verdict
+        else:
+            judge_pool.submit(_decide, st["goal"], tool, inp, recent, meta)     # watch-only: never make the agent wait
     elif ev == "PostToolUse":
-        broadcast({"type": "result", "tool_use_id": p.get("tool_use_id"), "tool": p.get("tool_name")})
-    elif ev in ("Stop", "SubagentStop"):
-        if ev == "Stop":
-            text = last_assistant_text(p.get("transcript_path", ""))
-            broadcast({"type": "report", "text": text, "ts": time.time()})
+        broadcast({"type": "result", "tool_use_id": p.get("tool_use_id"), "tool": p.get("tool_name"), "agent": agent})
+    elif ev == "Stop":
+        text = p.get("last_message") or last_assistant_text(p.get("transcript_path", ""))
+        broadcast({"type": "report", "text": judge_mod.redact(text)[:1600], "session": sid, "agent": agent, "ts": time.time()})
     return out
 
 
@@ -199,6 +234,8 @@ if __name__ == "__main__":
     srv = ThreadingHTTPServer(("127.0.0.1", PORT), H)
     srv.daemon_threads = True
     print(f"Bouncer live server on http://127.0.0.1:{PORT}", flush=True)
+    if os.environ.get("BOUNCER_WATCH_CODEX", "1") != "0":
+        threading.Thread(target=codex_watch.run, args=(handle_hook,), kwargs={"log": lambda m: print(m, flush=True)}, daemon=True).start()
     try:
         srv.serve_forever()
     except KeyboardInterrupt:

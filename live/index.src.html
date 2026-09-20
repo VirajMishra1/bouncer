@@ -566,6 +566,7 @@ function makePerson(label,sub,effect,opts){
   const brect=el("rect",{x:-w/2,y:-h,width:w,height:h,rx:7,fill:"#0a1030",stroke:opts.hijacked?"#ff5a6a":col,"stroke-width":2},badge);
   svgText(badge,0,sub?-23:-8,label,{"text-anchor":"middle","font-size":13,"font-weight":800,fill:"#fff","font-family":"ui-monospace,Menlo,monospace"});
   if(sub)svgText(badge,0,-8,sub,{"text-anchor":"middle","font-size":11,fill:opts.hijacked?"#ff9aa5":col,"font-family":"ui-monospace,Menlo,monospace"});
+  if(opts.agent){svgText(badge,0,-h-5,opts.agent.toUpperCase(),{"text-anchor":"middle","font-size":9,"font-weight":800,"letter-spacing":"1.6",fill:opts.agent==="codex"?"#3ddcb0":"#ff9a6b"});}
   const p={g,inner,armB,armF,legL,legR,hairSpike:spike,x:-90,y:GY,dir:1,walking:false,badge,brect,effect,px:-90,vx:0,seed:Math.random()*6};
   people.add(p);return p;
 }
@@ -676,7 +677,7 @@ function narrateText(prefix,text){const n=$("narrator");n.innerHTML="";const b=d
 function addLedger(d,kind,tagText){
   const ol=$("ledger");if(ol.querySelector(".empty"))ol.innerHTML="";
   const li=document.createElement("li");li.className=kind;const pct=Math.round(d.intent_match*100);
-  li.innerHTML=`<div class="t"><span>#${esc(d.seq)} ${esc(d.tool)}</span><span class="tag">${esc(tagText)}</span></div>`
+  li.innerHTML=`<div class="t"><span>#${esc(d.seq)} ${esc(d.tool)}</span><span class="tag">${esc((d.agent?d.agent.toUpperCase()+" · ":"")+tagText)}</span></div>`
     +(d.summary?`<div class="r" style="font-family:ui-monospace,Menlo,monospace;font-size:12px">${esc(d.summary)}</div>`:"")
     +(kind!=="OFF"?`<div class="r">${esc(d.reason)}</div><div class="m" title="How well this matches your goal"><i style="width:${pct}%"></i></div>`:`<div class="r">Nobody checked this one.</div>`)+`<div class="o"></div>`;
   ol.prepend(li);return{note(t){li.querySelector(".o").textContent=t;}};
@@ -714,8 +715,9 @@ async function revealAttacker(d,alive){
 }
 async function handle(d,i,total,tok,opts){
   opts=opts||{};const alive=()=>tok===runId,live=opts.live;
-  narrateText(`Step ${i+1}${total?` of ${total}`:""}.`,`The agent calls ${d.tool}${d.summary?` (${d.summary})`:""}.`);
-  const p=makePerson(d.tool,d.summary,d.effect,{hijacked:d.attack&&d.verdict==="BLOCK"});
+  if(live&&d.goal&&d.goal!==liveGoal){liveGoal=d.goal;setGoal(d.goal);}
+  narrateText(`Step ${i+1}${total?` of ${total}`:""}.`,`${whoIs(d.agent)} calls ${d.tool}${d.summary?` (${d.summary})`:""}.`);
+  const p=makePerson(d.tool,d.summary,d.effect,{hijacked:d.attack&&d.verdict==="BLOCK",agent:d.agent});
   await moveTo(p,QX,live?1000:1500);if(!alive())return;
 
   if(!bouncerOn){
@@ -814,14 +816,15 @@ async function run(){
 }
 
 /* ---------- LIVE mode: hooks -> local server -> SSE ---------- */
-let es=null,liveQ=[],liveEnforce=false;
+let es=null,liveQ=[],liveEnforce=false,liveGoal="",liveSession=null,busy=false;
+const whoIs=a=>a==="codex"?"Codex":a==="claude"?"Claude":"The agent";
 function setPills(){
   const mp=$("modePill"),ep=$("enfPill");
   if(mode==="live"){mp.className="pill live";mp.textContent="LIVE";ep.style.display="";ep.className="pill "+(liveEnforce?"enforce":"watch");ep.textContent=liveEnforce?"ENFORCING":"WATCH ONLY";}
   else{mp.className="pill";mp.textContent="DEMO";ep.style.display="none";}
   $("btnDemo").classList.toggle("on",mode==="demo");$("btnLive").classList.toggle("on",mode==="live");
 }
-function liveReset(){const tok=++runId;timers=[];anims=[];clearFx();resetTurn();liveQ=[];liveLoop(tok);}
+function liveReset(){busy=false;liveGoal="";const tok=++runId;timers=[];anims=[];clearFx();resetTurn();liveQ=[];liveLoop(tok);}
 function startLive(){
   mode="live";bouncerOn=true;$("sw").setAttribute("aria-checked","true");$("swText").textContent="ON";$("sw").disabled=true;
   $("swHint").textContent="Live mode: the bouncer is always on.";$("goalHead").textContent="Your latest prompt";$("badLabel").textContent="Would-be-bad actions";
@@ -838,12 +841,15 @@ function startLive(){
 }
 function onLive(e){
   if(e.type==="prompt"){
-    $("waiting").style.display="none";liveReset();
-    setGoal(e.goal||"(empty prompt)");ledgerNote("New prompt: "+(e.goal||"").slice(0,90));
-    narrateText("New prompt.","The agent is getting to work. Watch the door.");
+    $("waiting").style.display="none";
+    const same=e.session===liveSession;liveSession=e.session;
+    if(same||(!busy&&!liveQ.length)){
+      liveReset();liveGoal=e.goal||"";setGoal(e.goal||"(empty prompt)");ledgerNote(`${whoIs(e.agent)} · new prompt: `+(e.goal||"").slice(0,90));
+      narrateText("New prompt.",`${whoIs(e.agent)} is getting to work. Watch the door.`);
+    }else ledgerNote(`${whoIs(e.agent)} started another task: `+(e.goal||"").slice(0,80));
   }else if(e.type==="call"){
     const d=normalizeDecision(e.decision,0);liveEnforce=!!(e.decision&&e.decision.enforce);setPills();liveQ.push(d);$("waiting").style.display="none";
-  }else if(e.type==="report"){liveQ.push({__report:e.text||""});}
+  }else if(e.type==="report"){liveQ.push({__report:e.text||"",agent:e.agent});}
 }
 async function liveLoop(tok){
   let n=0;
@@ -852,15 +858,15 @@ async function liveLoop(tok){
     speed=userSpeed*clamp(1+liveQ.length/3,1,4);
     const d=liveQ.shift();
     if(d.__report!==undefined){
-      $("reportText").textContent=d.__report||"(the agent finished without a final message)";$("report").style.display="block";
+      $("reportText").textContent=d.__report||"(finished without a final message)";$("report").querySelector("h2").textContent=`What ${whoIs(d.agent)} said when it finished`;$("report").style.display="block";
       const r=$("result");r.className=counters.out>0?"result bad":"result good";r.textContent=counters.out>0?`Turn finished. Bouncer would have stopped ${counters.out} action${counters.out>1?"s":""}.`:"Turn finished. Nothing needed stopping.";r.style.display="block";
-      narrate("<b>The agent finished.</b> Its final message is under the scene.");continue;}
+      narrateText(`${whoIs(d.agent)} finished.`,"Its final message is under the scene.");continue;}
     $("result").style.display="none";
     if(d.verdict==="ALLOW"&&liveQ.length>=6){
       const batch=[d];while(liveQ.length&&!liveQ[0].__report&&liveQ[0].verdict==="ALLOW"&&batch.length<40)batch.push(liveQ.shift());
       counters.in+=batch.length;setCounters();ledgerNote(`${batch.length} routine calls waved through (${[...new Set(batch.map(b=>b.tool))].slice(0,4).join(", ")})`);
       narrateText("Rush hour.",`${batch.length} routine calls walked straight in.`);floatText(BX+120,430,`+${batch.length} let in`,"#47e6a8");await wait(500);continue;}
-    n++;await handle(d,n-1,0,tok,{live:true,enforce:liveEnforce});if(tok!==runId)return;await wait(120);
+    n++;busy=true;await handle(d,n-1,0,tok,{live:true,enforce:liveEnforce});if(tok!==runId)return;busy=false;await wait(120);
   }
 }
 

@@ -3,9 +3,14 @@
 import json
 import os
 import re
+import sys
 import urllib.error
 import urllib.request
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import rules_judge  # noqa: E402  (local, offline fallback and shared redaction)
+from rules_judge import redact  # noqa: E402,F401  (re-exported for the server)
 
 ENDPOINT = "https://integrate.api.nvidia.com/v1/chat/completions"
 DEFAULT_MODEL = "nvidia/nemotron-3-super-120b-a12b"
@@ -172,6 +177,21 @@ def _default_transport(url, headers, body, timeout):
         return json.loads(response.read().decode("utf-8"))
 
 
+def _cap(value, limit=600):
+    if isinstance(value, str):
+        return value if len(value) <= limit else value[:limit] + "…[truncated]"
+    if isinstance(value, dict):
+        return {k: _cap(v, limit) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_cap(v, limit) for v in value[:20]]
+    return value
+
+
+def model_enabled():
+    """The Nemotron judge is opt-in (BOUNCER_JUDGE=nemotron) because it sends redacted tool input to a hosted API."""
+    return os.environ.get("BOUNCER_JUDGE", "rules").strip().lower() == "nemotron"
+
+
 def _request_body(goal, tool, inp, recent, effect):
     schema = {
         "type": "object",
@@ -195,7 +215,9 @@ def _request_body(goal, tool, inp, recent, effect):
             },
         },
     }
-    context = {"user_goal": goal, "tool": tool, "input": inp, "effect": effect, "recent_actions": recent or []}
+    # Privacy: what leaves the machine is redacted and length-capped.
+    safe_input = _cap(redact(inp))
+    context = {"user_goal": _cap(redact(goal)), "tool": tool, "input": safe_input, "effect": effect, "recent_actions": _cap(redact(recent or []))}
     return {
         "model": os.environ.get("NVIDIA_MODEL", DEFAULT_MODEL),
         "temperature": 0,
@@ -239,6 +261,9 @@ def judge(goal, tool, inp, recent=None, *, transport=None, api_key=None):
     hard = _hard_decision(goal, tool, inp, action, effect)
     if hard:
         return hard
+
+    if transport is None and api_key is None and not model_enabled():
+        return rules_judge.judge(goal, tool, inp, recent)
 
     key = _load_api_key() if api_key is None else api_key.strip()
     if not key:

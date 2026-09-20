@@ -51,6 +51,7 @@ def main():
         return
     if not ensure_server():
         return
+    payload["agent"] = "claude"
     payload["bouncer_enforce"] = os.environ.get("BOUNCER_ENFORCE") == "1"
     try:
         out = post(json.dumps(payload).encode())
