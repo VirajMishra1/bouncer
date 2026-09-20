@@ -41,7 +41,14 @@ const main = async (): Promise<void> => {
   if (apiKey === undefined || apiKey.trim().length === 0) throw new Error("NVIDIA_API_KEY is required");
 
   const downstream = await connectDownstreams(parseDownstreams(process.env.BOUNCER_DOWNSTREAMS));
-  const evaluator = new NemotronEvaluator({ apiKey });
+  // Point at a self-hosted NIM (data never leaves your network) or any OpenAI-compatible judge.
+  const endpoint = process.env.BOUNCER_NEMOTRON_ENDPOINT?.trim();
+  const model = process.env.BOUNCER_NEMOTRON_MODEL?.trim();
+  const evaluator = new NemotronEvaluator({
+    apiKey,
+    ...(endpoint ? { endpoint } : {}),
+    ...(model ? { model } : {}),
+  });
   const audit = new JsonlAuditSink(process.env.BOUNCER_AUDIT_LOG ?? "./bouncer-audit.jsonl");
   const proxy = new BouncerProxy({ downstream, evaluator, audit });
   if (process.env.BOUNCER_GOAL?.trim()) proxy.setGoal(process.env.BOUNCER_GOAL);

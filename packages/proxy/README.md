@@ -8,7 +8,9 @@ Bouncer is a local stdio MCP relay that checks every downstream `tools/call` aga
 - Normalizes each tool call to `READ`, `SEND`, or `EXECUTE`.
 - Sends the goal, concrete action with typed arguments, neutral destination/resource identifiers, and the previous two untrusted tool results to Nemotron.
 - Forwards only a valid `ALLOW`; `BLOCK`, invalid model output, network failure, missing goal, and audit failure all fail closed.
-- Treats V1 `ASK` situations—especially a `SEND` destination absent from the goal—as blocked and logs the reason.
+- Treats a `SEND` to a destination absent from the goal as `ASK`: it is never forwarded, the reason is logged, and structured approval details are returned to the host (`structuredContent.approvalRequired`). There is no approval-resume step yet.
+- The goal is set once and locked. A later `bouncer_set_goal` with different text is refused unless the proxy is built with `allowGoalChange`.
+- Deterministic invariants run before the model and cannot be overruled by it: destructive operations, secret-bearing sends (any field, JSON-quoted or prefixed tokens), execution of text copied from earlier untrusted output, and sends with no determinable destination.
 - Writes JSONL audit records without raw arguments, goals, tool-result bodies, or API keys.
 
 The prompt, JSON schema, endpoint, model, and reasoning settings match `bouncer_eval/nemotron.py`:
@@ -60,7 +62,9 @@ npm run build
 node dist/cli.js
 ```
 
-The MCP client must first call:
+Optional settings: `BOUNCER_GOAL` (set by the host, so a hijacked agent never chooses the goal; recommended when you can), `BOUNCER_NEMOTRON_ENDPOINT` and `BOUNCER_NEMOTRON_MODEL` (a self-hosted NIM or another OpenAI-compatible judge, so tool calls never leave your network).
+
+Otherwise the MCP client must first call:
 
 ```json
 {
@@ -70,3 +74,9 @@ The MCP client must first call:
 ```
 
 The proxy then discovers and exposes the downstream tools dynamically. Stdio protocol traffic uses stdout; diagnostics use stderr.
+
+## Use it with a real agent (Claude Code, Codex, Cursor)
+
+Point the agent at Bouncer instead of at the tool server. [`../../examples/claude-code.mcp.json`](../../examples/claude-code.mcp.json) is a ready-to-edit config: replace the `/ABSOLUTE/PATH/TO` placeholders, build once (`npm run build`), export `NVIDIA_API_KEY`, and drop it in as `.mcp.json` (Claude Code) or add the same `command`/`args`/`env` to your agent's MCP settings. Remove the agent's direct connection to the same tool server, otherwise it can bypass the proxy.
+
+What is tested: `test/cli.test.ts` launches the real CLI over stdio in front of the demo email server with a stand-in judge that allows everything, and checks that nothing runs before a goal exists, an allowed read is forwarded, a send to an unnamed address is never forwarded, the goal cannot be rewritten, and the audit log holds no raw arguments or key. What is not tested: a real hosted Nemotron call through this path (needs your key) and any agent other than the MCP test client.
