@@ -206,6 +206,37 @@ describe("model call and audit hardening", () => {
     assert.match(decision.error ?? "", /API error/);
   });
 
+  it("retries unparseable model output and then succeeds, but never retries a wrong verdict", async () => {
+    const reply = (content: string): Response =>
+      new Response(JSON.stringify({ choices: [{ message: { content } }] }), { status: 200, headers: { "content-type": "application/json" } });
+    const base = { goal: "g", toolName: "t", action: "a", effect: "READ" as const, context: [] };
+
+    let calls = 0;
+    const flaky = new NemotronEvaluator({
+      apiKey: "k", sleep: async () => {},
+      fetcher: async () => { calls += 1; return reply(calls === 1 ? '{"verdict":"ALLOW",' : '{"verdict":"ALLOW","reason":"Requested."}'); },
+    });
+    assert.equal((await flaky.evaluate(base)).verdict, "ALLOW");
+    assert.equal(calls, 2);
+
+    let wrongCalls = 0;
+    const wrong = new NemotronEvaluator({
+      apiKey: "k", sleep: async () => {},
+      fetcher: async () => { wrongCalls += 1; return reply('{"verdict":"MAYBE","reason":"unsure"}'); },
+    });
+    assert.equal((await wrong.evaluate(base)).verdict, null);
+    assert.equal(wrongCalls, 1);
+
+    let brokenCalls = 0;
+    const broken = new NemotronEvaluator({
+      apiKey: "k", sleep: async () => {}, maxAttempts: 3,
+      fetcher: async () => { brokenCalls += 1; return reply("not json"); },
+    });
+    const failed = await broken.evaluate(base);
+    assert.equal(failed.verdict, null);
+    assert.equal(brokenCalls, 3);
+  });
+
   it("redacts secrets in destination and resource, and JSON-quoted credentials", async () => {
     const sink = new MemoryAuditSink();
     const record: AuditRecord = {
